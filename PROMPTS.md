@@ -17,7 +17,8 @@ Paste these one at a time. Test each phase before starting the next. Commit to G
    - Authorized redirect URI: `https://<your-project>.supabase.co/auth/v1/callback`
 4. Supabase → Authentication → Providers → Google: paste the Client ID and Secret, enable.
 5. Supabase → Authentication → URL Configuration: add `http://localhost:3000` and your deployed URL as redirect URLs.
-6. Get a Gemini API key from Google AI Studio. Check which Flash model and embedding model are current.
+6. Create a Groq account at console.groq.com and make an API key. Open the **Limits** page and note the per-model limits. Pick one small fast model (summaries) and one larger model (research and Ask), preferably ones that support structured outputs.
+   - Embeddings need no extra account: they run in a Supabase Edge Function (Phase 7). Install the Supabase CLI now and log in (`supabase login`).
 7. Create `.env.local` with the variables listed in `PROJECT.md` section 11. Never commit it.
 
 ---
@@ -82,9 +83,10 @@ Read PROJECT.md. Implement ONLY Phase 5.
 Create scripts/ingest.ts, run by a GitHub Actions scheduled workflow
 (.github/workflows/ingest.yml, also manually triggerable). It must: fetch a configurable
 list of RSS feeds (put the list in a config file, include tech, AI, business, world,
-science), skip URLs already in the articles table, extract article text, call Gemini
-(model from GEMINI_MODEL) ONCE per new article to return JSON with 3 summary bullets, a
-one-line why-it-matters, and a topic tag, validate the JSON, and insert into articles.
+science), skip URLs already in the articles table, extract article text, call Groq
+(model from GROQ_MODEL_FAST, using JSON-schema structured output if supported) ONCE per new
+article to return JSON with 3 summary bullets, a one-line why-it-matters, and a topic tag,
+validate it with zod, and insert into articles.
 Cap new articles per run, batch calls, and retry with backoff on rate limits. Also
 generate one daily_briefings row per topic. Use the service role key from env/secrets.
 Then change /today to read from the articles table, filtered by the user's interests,
@@ -97,9 +99,11 @@ Finish by: run lint/typecheck/build, fix errors, list changed files.
 ```
 Read PROJECT.md. Implement ONLY Phase 6.
 Build /research: drag-and-drop PDF upload to Supabase Storage (private bucket, per-user
-path), server-side text extraction, one structured Gemini call that returns an executive
-summary, key findings, important statistics, main arguments, limitations and open
-questions as JSON, saved into documents.digest_json. Show the digest in a clean reading
+path), server-side text extraction, a structured Groq call (GROQ_MODEL_SMART) that returns an
+executive summary, key findings, important statistics, main arguments, limitations and open
+questions as JSON (validated with zod), saved into documents.digest_json. For long papers,
+summarize section by section and then combine, so each request stays under the model's
+per-minute token limit; retry with backoff on 429 errors. Show the digest in a clean reading
 view. Add a compare view where the user selects 2 to 3 documents and gets a comparison
 table (aims, methods, findings, differences). Handle large PDFs, scanned PDFs with no
 text, and errors with clear messages.
@@ -111,11 +115,14 @@ Finish by: run lint/typecheck/build, fix errors, list changed files.
 ```
 Read PROJECT.md. Implement ONLY Phase 7.
 Add a Save button on articles and documents, and build /library listing saved items.
-When an item is saved or a document is uploaded, split its text into chunks (about 800
-tokens, 100 overlap), embed with GEMINI_EMBED_MODEL at 768 dimensions, and store in
-chunks. Add a Postgres function match_chunks that filters by auth.uid() and returns the
-top matches by cosine similarity. Build /ask: embed the question, retrieve top 5 to 8
-chunks, call Gemini to answer ONLY from those chunks, and show numbered citations that
+First create a Supabase Edge Function `embed` (supabase/functions/embed) that accepts an
+array of texts and returns 384-dimension embeddings using the built-in
+Supabase.ai.Session('gte-small') model; require a valid JWT. Explain how I deploy it with
+the Supabase CLI. Then: when an item is saved or a document is uploaded, split its text
+into chunks (about 350 tokens, 50 overlap), embed through the `embed` function, and store
+in chunks (vector(384)). Add a Postgres function match_chunks that filters by auth.uid()
+and returns the top matches by cosine similarity. Build /ask: embed the question with the
+same function, retrieve top 5 to 8 chunks, call Groq (GROQ_MODEL_SMART) to answer ONLY from those chunks, and show numbered citations that
 link to the source article or document. If nothing relevant is retrieved, answer that
 it is not in the library. Persist chat sessions and messages.
 Finish by: run lint/typecheck/build, fix errors, list changed files.
