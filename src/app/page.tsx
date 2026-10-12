@@ -1,69 +1,148 @@
-import Image from "next/image";
+import Link from "next/link";
+import { FileText, MessageSquareText, Newspaper } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { GoogleGlyph } from "@/components/google-glyph";
+
+const features = [
+  {
+    number: "01",
+    icon: Newspaper,
+    title: "Today, edited for you",
+    description:
+      "A front page assembled from your interests: a lead story, a three-line summary for every article, and one sentence on why it matters. No infinite feed — just the day's reading, ranked for you.",
+  },
+  {
+    number: "02",
+    icon: FileText,
+    title: "Research, digested",
+    description:
+      "Drop in a PDF and get an executive summary, key findings, the statistics worth remembering, limitations and open questions. Compare two or three papers side by side.",
+  },
+  {
+    number: "03",
+    icon: MessageSquareText,
+    title: "Ask your library",
+    description:
+      "Question everything you have saved. Answers come only from your own articles and papers, with citations that link back to the source — or a plain “not in your library” when it isn't.",
+  },
+];
+
+const stats = [
+  { value: "5–10 min", label: "a day's briefing, start to finish" },
+  { value: "3 bullets", label: "per story, plus why it matters" },
+  { value: "1 library", label: "news, papers and PDFs you can ask" },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-3 px-5 sm:px-8">
+          <Link
+            href="/"
+            className="font-heading text-xl tracking-tight text-foreground"
+          >
+            Chronicle
+            <span aria-hidden="true" className="text-brand">
+              .
+            </span>
+          </Link>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <ThemeToggle />
+            <Link
+              href="/login"
+              className={buttonVariants({
+                variant: "outline",
+                className: "h-9 gap-2 px-2.5 text-xs sm:px-4 sm:text-sm",
+              })}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              <GoogleGlyph />
+              Continue with Google
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1">
+        <section className="border-b border-border">
+          <div className="mx-auto w-full max-w-5xl px-5 pt-14 pb-14 sm:px-8 sm:pt-24 sm:pb-20">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-muted-foreground">
+              A personalized newspaper
+            </p>
+            <h1 className="mt-6 max-w-4xl font-heading text-4xl leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
+              The internet,{" "}
+              <em className="italic text-brand">edited</em> down to a
+              five-minute read.
+            </h1>
+            <p className="mt-7 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              Chronicle follows the topics you care about — news, research
+              papers, saved articles — and turns them into a calm daily
+              briefing. Ten minutes replaces an hour of browsing.
+            </p>
+
+            <dl className="mt-12 grid grid-cols-1 gap-6 border-t border-border pt-7 sm:grid-cols-3">
+              {stats.map((stat) => (
+                <div key={stat.value}>
+                  <dt className="font-heading text-2xl tracking-tight">
+                    {stat.value}
+                  </dt>
+                  <dd className="mt-1 text-sm text-muted-foreground">
+                    {stat.label}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
+
+        <section aria-labelledby="features-heading">
+          <h2 id="features-heading" className="sr-only">
+            Features
+          </h2>
+          <div className="mx-auto w-full max-w-5xl divide-y divide-border px-5 sm:px-8">
+            {features.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <article
+                  key={feature.number}
+                  className="grid gap-4 py-10 sm:py-12 md:grid-cols-12 md:items-start md:gap-8"
+                >
+                  <div className="flex items-center gap-3 md:col-span-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-brand">
+                      <Icon className="size-4" aria-hidden="true" />
+                    </span>
+                    <span className="font-heading text-sm tracking-[0.2em] text-muted-foreground">
+                      {feature.number}
+                    </span>
+                  </div>
+                  <h3 className="font-heading text-2xl leading-tight tracking-tight md:col-span-4 md:text-3xl">
+                    {feature.title}
+                  </h3>
+                  <p className="max-w-xl leading-relaxed text-muted-foreground md:col-span-5">
+                    {feature.description}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-border">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <p className="font-heading text-lg tracking-tight">
+            Chronicle
+            <span aria-hidden="true" className="text-brand">
+              .
+            </span>
+          </p>
+          <p className="text-sm text-muted-foreground">
+            A personalized newspaper and research digest. Sign in with Google to
+            get started.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </footer>
     </div>
   );
 }
