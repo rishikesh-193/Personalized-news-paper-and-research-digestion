@@ -1,10 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig } from "@/lib/supabase/config";
+import { safeNextPath } from "@/lib/post-auth";
 
-// Public routes: landing, login, and the OAuth callback (it must be reachable
-// before a session exists — it is where the session is created).
-const PUBLIC_PATHS = new Set(["/", "/login", "/auth/callback"]);
+// Public routes: landing, the auth pages (login, signup, password recovery)
+// and the auth routes where sessions are created or refreshed (OAuth
+// callback, email-link confirm, post-login routing).
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+  "/auth/confirm",
+  "/auth/post-login",
+]);
+
+// Signed-in users have no business on the account-entry pages.
+const AUTH_ENTRY_PATHS = new Set(["/login", "/signup"]);
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -41,8 +55,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (authenticated && pathname === "/login") {
-    return NextResponse.redirect(new URL("/today", request.url));
+  if (authenticated && AUTH_ENTRY_PATHS.has(pathname)) {
+    return NextResponse.redirect(
+      new URL(safeNextPath(request.nextUrl.searchParams.get("next")), request.url),
+    );
   }
 
   return response;
