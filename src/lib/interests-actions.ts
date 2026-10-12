@@ -65,16 +65,17 @@ export async function saveInterestsAction(
   return replaceInterests(context, topics);
 }
 
-/** /onboarding: save interests and mark profiles.onboarded. */
+/**
+ * /onboarding: save interests and mark profiles.onboarded.
+ * An empty list is allowed — it is the "Skip for now" path (onboard with
+ * no interests yet; the user adds them later in /settings).
+ */
 export async function completeOnboardingAction(
   topics: string[],
 ): Promise<{ ok: boolean; error?: string }> {
   const context = await requireUser();
   if (!context) {
     return { ok: false, error: "Your session could not be verified. Sign in again." };
-  }
-  if (topics.length === 0) {
-    return { ok: false, error: "Pick at least one topic to continue." };
   }
 
   const saved = await replaceInterests(context, topics);

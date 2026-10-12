@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Newspaper, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Newspaper, Settings2 } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,11 +73,16 @@ function ArticleCard({ article, lead = false }: { article: Article; lead?: boole
 }
 
 export function TodayView() {
-  const [activeTopics, setActiveTopics] = useState<string[]>(topics);
+  // null = "For you" (everything); otherwise a single topic tab.
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   const filtered = useMemo(
-    () => articles.filter((article) => activeTopics.includes(article.topic)),
-    [activeTopics],
+    () =>
+      activeTab === null
+        ? articles
+        : articles.filter((article) => article.topic === activeTab),
+    [activeTab],
   );
 
   const sourceCounts = useMemo(() => {
@@ -86,18 +92,6 @@ export function TodayView() {
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, []);
-
-  function toggleTopic(topic: string) {
-    setActiveTopics((prev) =>
-      prev.includes(topic)
-        ? prev.filter((t) => t !== topic)
-        : [...prev, topic],
-    );
-  }
-
-  function resetTopics() {
-    setActiveTopics(topics);
-  }
 
   const [lead, ...rest] = filtered;
 
@@ -118,57 +112,91 @@ export function TodayView() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        <aside
-          className="order-2 space-y-4 lg:order-1 lg:col-span-3"
-          aria-label="Topics and filters"
+      {/* Compact, horizontally scrollable topic tabs + settings shortcut */}
+      <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+        <div
+          className="flex min-w-0 gap-2 overflow-x-auto px-1 py-1"
+          role="tablist"
+          aria-label="Filter stories by topic"
         >
-          <Card>
-            <CardHeader>
-              <CardTitle>Topics</CardTitle>
-              <CardDescription>Choose what belongs in your edition.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {topics.map((topic) => {
-                const active = activeTopics.includes(topic);
-                return (
-                  <button
-                    key={topic}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleTopic(topic)}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-sm font-medium transition-colors",
-                      active
-                        ? "border-brand bg-brand text-brand-foreground"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {topic}
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
+          <button
+            key="for-you"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === null}
+            onClick={() => setActiveTab(null)}
+            className={cn(
+              "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              activeTab === null
+                ? "border-brand bg-brand text-brand-foreground"
+                : "border-border bg-background text-muted-foreground hover:text-foreground",
+            )}
+          >
+            For you
+          </button>
+          {topics.map((topic) => {
+            const active = activeTab === topic;
+            return (
+              <button
+                key={topic}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(active ? null : topic)}
+                className={cn(
+                  "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  active
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {topic}
+              </button>
+            );
+          })}
+        </div>
+        <Link
+          href="/settings"
+          className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Settings2 className="size-3.5" aria-hidden="true" />
+          Edit interests
+        </Link>
+      </div>
 
+      <div className="grid gap-6 lg:grid-cols-12">
+        <aside className="order-2 space-y-4 lg:order-1 lg:col-span-3" aria-label="Filters">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>Sources today</CardTitle>
+              <button
+                type="button"
+                onClick={() => setSourcesOpen((open) => !open)}
+                aria-expanded={sourcesOpen}
+                aria-controls="sources-today"
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <ChevronDown
+                  className={cn(
+                    "size-4 transition-transform",
+                    sourcesOpen && "rotate-180",
+                  )}
+                  aria-hidden="true"
+                />
+                <span className="sr-only">Toggle sources</span>
+              </button>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {sourceCounts.map(([source, count]) => (
-                <div key={source} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{source}</span>
-                  <span className="text-muted-foreground">{count}</span>
-                </div>
-              ))}
-            </CardContent>
+            {sourcesOpen ? (
+              <CardContent id="sources-today" className="space-y-2 text-sm">
+                {sourceCounts.map(([source, count]) => (
+                  <div key={source} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{source}</span>
+                    <span className="text-muted-foreground">{count}</span>
+                  </div>
+                ))}
+              </CardContent>
+            ) : null}
           </Card>
-
-          <Button variant="outline" className="w-full" onClick={resetTopics}>
-            <RotateCcw aria-hidden="true" />
-            Reset topics
-          </Button>
         </aside>
 
         <section className="order-1 space-y-4 lg:order-2 lg:col-span-6" aria-label="Stories">
@@ -176,9 +204,21 @@ export function TodayView() {
           {filtered.length === 0 ? (
             <EmptyState
               icon={Newspaper}
-              title="Nothing matches these topics"
-              description="No stories in your edition right now. Re-enable a topic or reset the filter to see everything again."
-              action={<Button onClick={resetTopics}>Show all topics</Button>}
+              title={
+                activeTab === null
+                  ? "Your edition is empty"
+                  : `Nothing new in ${activeTab}`
+              }
+              description={
+                activeTab === null
+                  ? "Once ingestion runs, your stories will appear here."
+                  : "No stories in this topic right now — back to For you to see everything."
+              }
+              action={
+                activeTab === null ? undefined : (
+                  <Button onClick={() => setActiveTab(null)}>For you</Button>
+                )
+              }
             />
           ) : (
             <>
