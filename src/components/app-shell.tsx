@@ -21,9 +21,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { currentUser, dailyBriefing } from "@/lib/mock-data";
 import type { AppUser } from "@/lib/auth-user";
 import { signOutUser } from "@/lib/supabase/client";
+
+/** Neutral fallback when claims carry no display name. */
+const FALLBACK_NAME = "Reader";
 
 const navItems = [
   { href: "/today", label: "Today" },
@@ -52,12 +54,36 @@ function NavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+/** Nothing to subscribe to — the date only changes between renders. */
+function subscribeToNothing() {
+  return () => {};
+}
+
+/**
+ * The reader's local date for the footer. useSyncExternalStore renders ""
+ * during SSR and swaps in the real local date after hydration, so the server
+ * HTML and the client tree can never disagree on a time-dependent string.
+ */
+function useTodayLabel() {
+  return React.useSyncExternalStore(
+    subscribeToNothing,
+    () =>
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    () => "",
+  );
+}
+
 function UserMenu({ user }: { user: AppUser | null }) {
   const router = useRouter();
   const [signingOut, startTransition] = React.useTransition();
-  const name = user?.name ?? currentUser.name;
-  const email = user?.email ?? currentUser.email;
-  const initials = user?.initials ?? currentUser.initials;
+
+  const name = user?.name ?? FALLBACK_NAME;
+  const email = user?.email ?? "";
+  const initials = user?.initials ?? FALLBACK_NAME.slice(0, 1).toUpperCase();
 
   function handleSignOut() {
     startTransition(async () => {
@@ -131,6 +157,8 @@ export function AppShell({
   user: AppUser | null;
   children: React.ReactNode;
 }) {
+  const today = useTodayLabel();
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
@@ -171,8 +199,8 @@ export function AppShell({
 
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-1 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p>Chronicle — demo build with mock articles and digests.</p>
-          <p>{dailyBriefing.date}</p>
+          <p>Chronicle — stories summarized by AI. Check the source.</p>
+          <p>{today}</p>
         </div>
       </footer>
     </div>

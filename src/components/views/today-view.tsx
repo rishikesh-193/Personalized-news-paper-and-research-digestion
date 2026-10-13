@@ -2,7 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ExternalLink, Newspaper, Settings2 } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  ChevronDown,
+  EyeOff,
+  ExternalLink,
+  Newspaper,
+  Settings2,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +23,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
+import {
+  setArticleReactionAction,
+  toggleSaveArticleAction,
+} from "@/lib/article-actions";
 
 /** One article row from `articles`, mapped by the server page (RLS read). */
 export interface TodayArticle {
@@ -25,6 +39,14 @@ export interface TodayArticle {
   topic: string;
   summaryBullets: string[];
   whyItMatters: string;
+  /** Explainable ranking note, e.g. "Because you follow AI". */
+  reason?: string | null;
+}
+
+/** The signed-in user's per-article state (own `article_events` rows). */
+export interface ArticleUserState {
+  saved: boolean;
+  reaction: "like" | "dislike" | "skip" | null;
 }
 
 /** One row from `daily_briefings` for the user's topics. */
@@ -36,11 +58,13 @@ export interface TodayBriefing {
 }
 
 interface TodayViewProps {
-  /** Interest-matched, last 7 days, newest first — no mock data. */
+  /** Interest-matched, last 7 days, ranked by the server — no mock data. */
   articles: TodayArticle[];
   /** The user's saved interests; also drives the tab row. */
   interests: string[];
   briefings: TodayBriefing[];
+  /** Per-article save/reaction state for the signed-in user. */
+  userState?: Record<string, ArticleUserState>;
 }
 
 function formatDay(iso: string): string {
@@ -68,7 +92,15 @@ function editionDate(): string {
   });
 }
 
-function ArticleCard({ article, lead = false }: { article: TodayArticle; lead?: boolean }) {
+function ArticleCard({
+  article,
+  lead = false,
+  state,
+}: {
+  article: TodayArticle;
+  lead?: boolean;
+  state?: ArticleUserState;
+}) {
   return (
     <article className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -88,6 +120,11 @@ function ArticleCard({ article, lead = false }: { article: TodayArticle; lead?: 
           </>
         ) : null}
       </div>
+      {article.reason ? (
+        <p className="mt-2 text-[11px] font-medium tracking-wide text-brand">
+          {article.reason}
+        </p>
+      ) : null}
       <h3
         className={cn(
           "mt-2.5 font-heading tracking-tight",
@@ -133,11 +170,118 @@ function ArticleCard({ article, lead = false }: { article: TodayArticle; lead?: 
           AI-generated summary. Check the source.
         </span>
       </div>
+      <CardActions articleId={article.id} state={state} />
     </article>
   );
 }
 
-export function TodayView({ articles, interests, briefings }: TodayViewProps) {
+/** Save / like / dislike / not-interested for one card, optimistic. */
+function CardActions({
+  articleId,
+  state,
+}: {
+  articleId: string;
+  state?: ArticleUserState;
+}) {
+  const [saved, setSaved] = useState(state?.saved ?? false);
+  const [reaction, setReaction] = useState<ArticleUserState["reaction"]>(
+    state?.reaction ?? null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function act(kind: "save" | "like" | "dislike" | "skip") {
+    setBusy(true);
+    setError(null);
+    // Optimistic update, reverted on failure.
+    const before = { saved, reaction };
+    if (kind === "save") {
+      setSaved((value) => !value);
+    } else {
+      setReaction((value) => (value === kind ? null : kind));
+    }
+    const result =
+      kind === "save"
+        ? await toggleSaveArticleAction(articleId)
+        : await setArticleReactionAction(articleId, kind);
+    if (!result.ok) {
+      setSaved(before.saved);
+      setReaction(before.reaction);
+      setError(result.error ?? "That did not work — try again.");
+    } else if (typeof result.state === "boolean" && kind === "save") {
+      setSaved(result.state);
+    }
+    setBusy(false);
+  }
+
+  const iconButton =
+    "rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50";
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-border/60 pt-2">
+      <button
+        type="button"
+        onClick={() => act("save")}
+        disabled={busy}
+        aria-pressed={saved}
+        aria-label={saved ? "Remove from library" : "Save to library"}
+        className={cn(iconButton, saved && "text-brand hover:text-brand")}
+      >
+        {saved ? (
+          <BookmarkCheck className="size-4" aria-hidden="true" />
+        ) : (
+          <Bookmark className="size-4" aria-hidden="true" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => act("like")}
+        disabled={busy}
+        aria-pressed={reaction === "like"}
+        aria-label="More like this"
+        className={cn(iconButton, reaction === "like" && "text-brand")}
+      >
+        <ThumbsUp className="size-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={() => act("dislike")}
+        disabled={busy}
+        aria-pressed={reaction === "dislike"}
+        aria-label="Less like this"
+        className={cn(iconButton, reaction === "dislike" && "text-destructive")}
+      >
+        <ThumbsDown className="size-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={() => act("skip")}
+        disabled={busy}
+        aria-pressed={reaction === "skip"}
+        aria-label="Not interested in this topic"
+        className={cn(
+          "ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50",
+          reaction === "skip" && "line-through",
+        )}
+      >
+        <EyeOff className="size-3.5" aria-hidden="true" />
+        Not interested
+      </button>
+      {error ? (
+        <p role="alert" className="w-full text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function TodayView({
+  articles,
+  interests,
+  briefings,
+  userState = {},
+}: TodayViewProps) {
   // null = "For you" (all interest-matched stories); otherwise one topic tab.
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -299,10 +443,14 @@ export function TodayView({ articles, interests, briefings }: TodayViewProps) {
             )
           ) : (
             <>
-              <ArticleCard article={lead} lead />
+              <ArticleCard article={lead} lead state={userState[lead.id]} />
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
                 {rest.map((article) => (
-                  <ArticleCard key={article.id} article={article} />
+                  <ArticleCard
+                    key={article.id}
+                    article={article}
+                    state={userState[article.id]}
+                  />
                 ))}
               </div>
             </>

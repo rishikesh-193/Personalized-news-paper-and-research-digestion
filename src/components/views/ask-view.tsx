@@ -1,48 +1,109 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquareText, Send, SquarePen } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ExternalLink,
+  Library,
+  MessageSquareText,
+  Send,
+  SquarePen,
+} from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
-import {
-  askSuggestions,
-  cannedReplies,
-  initialMessages,
-  type ChatMessage,
-} from "@/lib/mock-data";
 
-function Citations({ citations }: { citations: NonNullable<ChatMessage["citations"]> }) {
+export interface AskCitation {
+  n: number;
+  title: string;
+  source: string;
+  url?: string;
+}
+
+export interface AskMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: AskCitation[];
+}
+
+export interface AskSession {
+  id: string;
+  label: string;
+  createdAt: string;
+}
+
+/** Starter questions shown in the empty state. */
+const SUGGESTIONS = [
+  "What are the biggest themes in what I've saved?",
+  "Summarize the key findings from my uploaded papers.",
+  "What do my sources say about AI regulation?",
+];
+
+function Citations({ citations }: { citations: AskCitation[] }) {
   return (
     <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
       <span className="text-[11px] font-medium tracking-[0.15em] text-muted-foreground uppercase">
         Sources
       </span>
-      {citations.map((citation) => (
-        <div key={citation.n} className="flex items-start gap-2 text-sm">
-          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-medium text-brand">
-            {citation.n}
-          </span>
-          <span className="leading-snug">
-            <span className="text-foreground">{citation.title}</span>{" "}
-            <span className="text-muted-foreground">— {citation.source}</span>
-          </span>
-        </div>
-      ))}
+      {citations.map((citation) => {
+        const isDocument = citation.url === "/research";
+        const inner = (
+          <>
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-medium text-brand">
+              {citation.n}
+            </span>
+            <span className="leading-snug">
+              <span className="text-foreground">{citation.title}</span>{" "}
+              <span className="text-muted-foreground">— {citation.source}</span>
+            </span>
+          </>
+        );
+        return citation.url ? (
+          <Link
+            key={`${citation.n}-${citation.title}`}
+            href={citation.url}
+            {...(isDocument
+              ? {}
+              : { target: "_blank", rel: "noopener noreferrer" })}
+            className="flex items-start gap-2 text-sm hover:text-foreground"
+          >
+            {inner}
+            {isDocument ? null : (
+              <ExternalLink className="mt-1 size-3 shrink-0" aria-hidden="true" />
+            )}
+          </Link>
+        ) : (
+          <div key={`${citation.n}-${citation.title}`} className="flex items-start gap-2 text-sm">
+            {inner}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-export function AskView() {
-  const [messages, setMessages] = React.useState<ChatMessage[]>(initialMessages);
+export function AskView({
+  sessions,
+  activeSessionId,
+  initialMessages,
+  hasLibrary,
+}: {
+  sessions: AskSession[];
+  activeSessionId: string | null;
+  initialMessages: AskMessage[];
+  hasLibrary: boolean;
+}) {
+  const router = useRouter();
+  const [messages, setMessages] = React.useState<AskMessage[]>(initialMessages);
   const [input, setInput] = React.useState("");
   const [thinking, setThinking] = React.useState(false);
-  const [replyIndex, setReplyIndex] = React.useState(0);
+  const [error, setError] = React.useState<string | null>(null);
+  const [sessionId, setSessionId] = React.useState<string | null>(activeSessionId);
   const scrollRef = React.useRef<HTMLDivElement>(null);
-  const timersRef = React.useRef<number[]>([]);
 
   React.useEffect(() => {
     const element = scrollRef.current;
@@ -51,62 +112,102 @@ export function AskView() {
     }
   }, [messages, thinking]);
 
-  React.useEffect(
-    () => () => {
-      for (const timer of timersRef.current) window.clearTimeout(timer);
-    },
-    [],
-  );
+  async function send(text: string) {
+    const question = text.trim();
+    if (!question || thinking) return;
 
-  function send(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || thinking) return;
-
-    const userMessage: ChatMessage = {
-      id: `u-${messages.length}`,
-      role: "user",
-      content: trimmed,
-    };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((previous) => [
+      ...previous,
+      { id: `u-${Date.now()}`, role: "user", content: question },
+    ]);
     setInput("");
     setThinking(true);
+    setError(null);
 
-    const timer = window.setTimeout(() => {
-      const reply = cannedReplies[replyIndex % cannedReplies.length];
-      setReplyIndex((index) => index + 1);
-      setMessages((prev) => [...prev, { ...reply, id: `a-${prev.length}` }]);
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          session_id: sessionId ?? undefined,
+        }),
+      });
+      const data = (await response.json()) as {
+        session_id?: string;
+        answer?: string;
+        citations?: AskCitation[];
+        error?: string;
+      };
+      if (!response.ok || !data.answer) {
+        throw new Error(data.error ?? "Could not answer — try again.");
+      }
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: data.answer!,
+          citations: data.citations?.length ? data.citations : undefined,
+        },
+      ]);
+      if (!sessionId && data.session_id) {
+        setSessionId(data.session_id);
+        router.replace(`/ask?session=${data.session_id}`);
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Something went wrong.",
+      );
+      // Keep the user's question visible so it can be retried.
+      setInput(question);
+    } finally {
       setThinking(false);
-    }, 900);
-    timersRef.current.push(timer);
+    }
   }
 
-  function newChat() {
-    setMessages([]);
-    setInput("");
-    setThinking(false);
-  }
+  const showEmpty = messages.length === 0 && !thinking;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
         <div>
-          <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">Ask</h1>
+          <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">
+            Ask
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Answers come only from the articles and papers you&rsquo;ve saved.
           </p>
-          <Badge className="mt-2 bg-brand/10 text-brand hover:bg-brand/10">
-            Preview: sample data
-          </Badge>
         </div>
-        <Button
-          variant="outline"
-          onClick={newChat}
-          disabled={messages.length === 0 && !thinking}
-        >
-          <SquarePen aria-hidden="true" />
-          New chat
-        </Button>
+        {sessions.length > 0 ? (
+          <Button variant="outline" onClick={() => router.push("/ask")}>
+            <SquarePen aria-hidden="true" />
+            New chat
+          </Button>
+        ) : null}
       </div>
+
+      {sessions.length > 1 ? (
+        <nav
+          className="flex gap-2 overflow-x-auto border-b border-border/60 py-2"
+          aria-label="Your chats"
+        >
+          {sessions.map((session) => (
+            <Link
+              key={session.id}
+              href={`/ask?session=${session.id}`}
+              className={cn(
+                "max-w-56 truncate rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                session.id === sessionId
+                  ? "border-brand bg-brand text-brand-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {session.label}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
       <div
         ref={scrollRef}
@@ -114,24 +215,39 @@ export function AskView() {
         style={{ maxHeight: "calc(100vh - 24rem)" }}
         aria-live="polite"
       >
-        {messages.length === 0 && !thinking ? (
+        {showEmpty ? (
           <EmptyState
-            icon={MessageSquareText}
-            title="Ask your library anything"
-            description="Questions run over the articles and papers you've saved, with citations back to the source. Try one of these:"
+            icon={hasLibrary ? MessageSquareText : Library}
+            title={hasLibrary ? "Ask your library anything" : "Save something first"}
+            description={
+              hasLibrary
+                ? "Questions run over the articles and papers you've saved, with citations back to the source. Try one of these:"
+                : "Ask works over what you save. Save articles on Today or upload a paper in Research, then ask about them here."
+            }
             action={
-              <div className="flex max-w-md flex-col gap-2 pt-1">
-                {askSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => send(suggestion)}
-                    className="rounded-lg border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-brand/50 hover:text-foreground"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+              hasLibrary ? (
+                <div className="flex max-w-md flex-col gap-2 pt-1">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => send(suggestion)}
+                      className="rounded-lg border border-border bg-background px-4 py-2 text-left text-sm transition-colors hover:border-brand/50 hover:text-foreground"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex gap-2 pt-1">
+                  <Link href="/today">
+                    <Button>Browse Today</Button>
+                  </Link>
+                  <Link href="/research">
+                    <Button variant="outline">Upload a paper</Button>
+                  </Link>
+                </div>
+              )
             }
           />
         ) : (
@@ -167,6 +283,15 @@ export function AskView() {
             <span className="sr-only">Thinking…</span>
           </div>
         ) : null}
+
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <form
@@ -186,7 +311,11 @@ export function AskView() {
             }
           }}
           rows={2}
-          placeholder="Ask about what you've saved…"
+          placeholder={
+            hasLibrary
+              ? "Ask about what you've saved…"
+              : "Save an article first, then ask about it…"
+          }
           aria-label="Your question"
           className="min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
         />
@@ -195,7 +324,10 @@ export function AskView() {
           size="icon"
           aria-label="Send question"
           disabled={thinking || !input.trim()}
-          className={cn("shrink-0", input.trim() && "bg-brand text-brand-foreground hover:bg-brand/90")}
+          className={cn(
+            "shrink-0",
+            input.trim() && "bg-brand text-brand-foreground hover:bg-brand/90",
+          )}
         >
           <Send aria-hidden="true" />
         </Button>

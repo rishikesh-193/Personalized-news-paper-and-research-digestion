@@ -16,8 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { completeOnboardingAction } from "@/lib/interests-actions";
-import { topics } from "@/lib/mock-data";
 import {
+  ALL_TOPICS,
   TOPIC_GROUPS,
   subtopicSuggestionsFor,
   type TopicTile,
@@ -77,7 +77,8 @@ export function OnboardingView({ next }: { next: string | null }) {
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
-  const allTopics = [...topics, ...customTopics];
+  // Catalog + custom picks: used so a typed topic never duplicates a tile.
+  const allTopics = [...ALL_TOPICS, ...customTopics];
   const normalizedQuery = query.trim().toLowerCase();
 
   function toggleTopic(topic: string) {

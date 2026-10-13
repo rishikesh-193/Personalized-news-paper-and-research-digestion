@@ -15,6 +15,7 @@ import {
   InvalidOutputError,
   RateLimitExhaustedError,
 } from "../../../../../scripts/ingest/groq";
+import { chunkText, embedTexts } from "@/lib/embeddings";
 
 export const maxDuration = 60;
 
@@ -289,6 +290,36 @@ export async function POST(request: NextRequest) {
         ? await digestWholePaper(groq, fileName, text)
         : await digestLongPaper(groq, fileName, text);
     await setStatus("ready", digest, null);
+
+    // Index the paper for Ask: chunk the extracted text, embed with the
+    // same gte-small model, and store under the uploader's own user_id.
+    // Idempotent (prior chunks for this document are replaced) and
+    // best-effort — a digest must stay usable even if indexing fails.
+    try {
+      const chunks = chunkText(text, 1_400, 150).slice(0, 30);
+      if (chunks.length > 0) {
+        const vectors = await embedTexts(chunks.map((chunk) => chunk.content));
+        await supabase
+          .from("chunks")
+          .delete()
+          .eq("user_id", userId)
+          .eq("source_type", "document")
+          .eq("source_id", documentId);
+        const { error: chunkError } = await supabase.from("chunks").insert(
+          chunks.map((chunk, index) => ({
+            user_id: userId,
+            source_type: "document",
+            source_id: documentId,
+            content: chunk.content,
+            embedding: vectors[index],
+          })),
+        );
+        if (chunkError) throw new Error(chunkError.message);
+      }
+    } catch {
+      // best-effort: the digest itself is already saved and usable
+    }
+
     return NextResponse.json({ id: documentId, status: "ready" });
   } catch (error) {
     const message = shortErrorMessage(error);

@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import {
   TodayView,
+  type ArticleUserState,
   type TodayArticle,
   type TodayBriefing,
 } from "@/components/views/today-view";
 import { createClient } from "@/lib/supabase/server";
+import { rankArticles } from "@/lib/ranking";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -49,6 +51,19 @@ export default async function TodayPage() {
   let interests: string[] = [];
   let articles: TodayArticle[] = [];
   let briefings: TodayBriefing[] = [];
+  let userState: Record<string, ArticleUserState> = {};
+
+  // The user's own interaction signals (own rows under RLS). Non-fatal: an
+  // events read failure just means a default ranking.
+  const eventTopics = async (
+    client: Awaited<ReturnType<typeof createClient>>,
+  ) => {
+    const { data, error } = await client
+      .from("article_events")
+      .select("article_id, event");
+    if (error || !data) return null;
+    return data as { article_id: string; event: string }[];
+  };
 
   // Interests — own rows under RLS; they drive both tabs and filtering.
   const { data: interestRows, error: interestError } = await supabase
@@ -84,6 +99,52 @@ export default async function TodayPage() {
       loadFailed = true;
     } else {
       articles = (articleRows ?? []).map(toArticle);
+
+      // Rank with the user's real signals; reasons ride on each card.
+      const events = await eventTopics(supabase);
+      if (events) {
+        const topicOf = new Map(articles.map((a) => [a.id, a.topic]));
+        const likedTopics: Record<string, number> = {};
+        const negativeTopics: Record<string, number> = {};
+        const seenIds = new Set<string>();
+        const saved = new Set<string>();
+        const reactions = new Map<string, ArticleUserState["reaction"]>();
+        for (const row of events) {
+          const topic = topicOf.get(row.article_id);
+          if (row.event === "save") {
+            saved.add(row.article_id);
+            if (topic) likedTopics[topic] = (likedTopics[topic] ?? 0) + 1;
+          } else if (row.event === "like") {
+            if (topic) likedTopics[topic] = (likedTopics[topic] ?? 0) + 1;
+            reactions.set(row.article_id, "like");
+          } else if (row.event === "dislike" || row.event === "skip") {
+            if (topic) negativeTopics[topic] = (negativeTopics[topic] ?? 0) + 1;
+            reactions.set(row.article_id, row.event);
+          }
+          seenIds.add(row.article_id);
+        }
+
+        const ranked = rankArticles(articles, {
+          interests,
+          likedTopics,
+          negativeTopics,
+          seenIds,
+        });
+        articles = ranked.map(({ article, reason }) => ({
+          ...article,
+          reason,
+        }));
+
+        userState = Object.fromEntries(
+          articles.map((article) => [
+            article.id,
+            {
+              saved: saved.has(article.id),
+              reaction: reactions.get(article.id) ?? null,
+            },
+          ]),
+        );
+      }
     }
 
     // Saved briefings — signed-in read (RLS); newest dates first.
@@ -114,6 +175,7 @@ export default async function TodayPage() {
       articles={articles}
       interests={interests}
       briefings={briefings}
+      userState={userState}
     />
   );
 }

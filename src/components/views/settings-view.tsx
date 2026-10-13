@@ -15,7 +15,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { currentUser, topics } from "@/lib/mock-data";
+import { ALL_TOPICS, isKnownTopic } from "@/lib/topic-groups";
+
+/** Neutral fallback when claims carry no display name. */
+const FALLBACK_NAME = "Reader";
 import type { AppUser } from "@/lib/auth-user";
 import { signOutUser } from "@/lib/supabase/client";
 import { saveInterestsAction } from "@/lib/interests-actions";
@@ -43,16 +46,25 @@ export function SettingsView({
   const [savedNote, setSavedNote] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const noteTimerRef = React.useRef<number | undefined>(undefined);
+  // Every topic the ingester covers, plus any custom topic this reader added
+  // during onboarding (so it can be seen and removed here too).
   const availableTopics = [
-    ...topics,
-    ...(initialInterests ?? []).filter((topic) => !topics.includes(topic)),
+    ...ALL_TOPICS,
+    ...(initialInterests ?? []).filter((topic) => !isKnownTopic(topic)),
   ];
   const account = {
-    name: user?.name ?? currentUser.name,
-    email: user?.email ?? currentUser.email,
-    initials: user?.initials ?? currentUser.initials,
+    name: user?.name ?? FALLBACK_NAME,
+    email: user?.email ?? "",
+    initials: user?.initials ?? FALLBACK_NAME.slice(0, 1).toUpperCase(),
     avatarUrl: user?.avatarUrl,
   };
+  // The real sign-in method from verified claims — never a hard-coded label.
+  const providerLabel =
+    user?.provider === "google"
+      ? "Google"
+      : user?.provider === "email"
+        ? "Email + password"
+        : "Supabase account";
 
   React.useEffect(
     () => () => {
@@ -149,8 +161,8 @@ export function SettingsView({
           <CardTitle>Account</CardTitle>
           <CardDescription>
             {user
-              ? "Signed in with Google."
-              : "Local demo profile — nothing is synced yet."}
+              ? `Signed in as ${account.email || account.name}.`
+              : "No active session — sign in to sync your edition."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-4">
@@ -172,14 +184,14 @@ export function SettingsView({
             variant="outline"
             className="border-brand/40 text-brand"
           >
-            {user ? "Google connected" : "Google not connected"}
+            {user ? providerLabel : "Signed out"}
           </Badge>
         </CardContent>
         <CardContent className="pt-0">
           <p className="text-sm text-muted-foreground">
             {user
-              ? "Your session is managed by Supabase Auth with Google."
-              : "Sign in with Google arrives next; until then this profile lives only in your browser."}
+              ? "Your session and interests are stored in your Supabase account."
+              : "Sign in to save interests and keep your library across devices."}
           </p>
           <Button
             variant="outline"

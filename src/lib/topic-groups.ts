@@ -136,6 +136,23 @@ export const TOPIC_GROUPS: TopicGroup[] = [
   },
 ];
 
+/**
+ * Every topic label the UI offers, flattened from the grouped tiles in
+ * display order. This is the canonical topic vocabulary: the onboarding
+ * tiles, the /settings interest chips, and the ingestion feed labels in
+ * scripts/ingest/feeds.ts must all agree with it (feeds.ts imports these
+ * labels), so a topic a reader picks is a topic that has sources.
+ */
+export const ALL_TOPICS: string[] = TOPIC_GROUPS.flatMap((group) =>
+  group.tiles.map((tile) => tile.label),
+).filter((label, index, labels) => labels.indexOf(label) === index);
+
+/** Case-insensitive membership test against the canonical topic list. */
+export function isKnownTopic(topic: string): boolean {
+  const needle = topic.trim().toLowerCase();
+  return ALL_TOPICS.some((label) => label.toLowerCase() === needle);
+}
+
 /** Suggested sub-topics for step 2, keyed by lowercased topic label. */
 const SUBTOPIC_SUGGESTIONS: Record<string, string[]> = {
   ai: ["LLMs", "Robotics", "Research papers", "Agents", "Open source", "Safety"],
