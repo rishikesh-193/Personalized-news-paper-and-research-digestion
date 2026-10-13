@@ -127,6 +127,10 @@ function isGenerationFailure(message: string): boolean {
  * - 429: honors retry-after, else exponential backoff with a cap; after the
  *   retry cap the limit is treated as persistent and `stopped` flips true so
  *   the pipeline finishes cleanly with what it already saved.
+ *
+ * `modelEnvVar` selects which model to use (GROQ_MODEL_FAST by default for
+ * bulk ingestion; the Research Lab route passes GROQ_MODEL_SMART) so both
+ * callers share the exact same retry/validation behavior.
  */
 export class GroqClient {
   private readonly apiKey: string;
@@ -136,11 +140,11 @@ export class GroqClient {
   private useTemperature = true;
   private stoppedFlag = false;
 
-  constructor() {
+  constructor(modelEnvVar: "GROQ_MODEL_FAST" | "GROQ_MODEL_SMART" = "GROQ_MODEL_FAST") {
     const apiKey = process.env.GROQ_API_KEY;
-    const model = process.env.GROQ_MODEL_FAST;
+    const model = process.env[modelEnvVar];
     if (!apiKey) throw new Error("GROQ_API_KEY is not set in the environment");
-    if (!model) throw new Error("GROQ_MODEL_FAST is not set in the environment");
+    if (!model) throw new Error(`${modelEnvVar} is not set in the environment`);
     this.apiKey = apiKey;
     this.model = model;
   }

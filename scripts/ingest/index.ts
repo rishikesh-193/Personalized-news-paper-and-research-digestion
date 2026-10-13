@@ -17,7 +17,7 @@ dotenv.config({ path: ".env", quiet: true });
 import { RssAdapter } from "./adapters/rss";
 import type { RawItem } from "./adapters/types";
 import { FEEDS } from "./feeds";
-import { extractReadableText } from "./extract";
+import { extractArticleText, stripTags } from "./extract";
 import {
   GroqClient,
   InvalidOutputError,
@@ -37,6 +37,7 @@ import {
   BriefingSchema,
   TOPIC_LABELS,
 } from "./schema";
+import { findViolations, guardBasis, summaryOutputText } from "./guard";
 import { log, logError, normalizeTitle, normalizeUrl, runPool } from "./util";
 
 /** Only items published in this window are eligible. */
@@ -127,7 +128,9 @@ function takeRoundRobin(candidates: RawItem[], limit: number): RawItem[] {
 const ARTICLE_SYSTEM = [
   "You write digest entries for a personal newspaper.",
   "You receive ONE article's text, possibly truncated.",
-  "Use ONLY facts present in the supplied text — never invent facts, numbers, names or quotes. If the text does not contain something, leave it out.",
+  "Every bullet and the why-it-matters sentence may state ONLY facts that appear in the supplied text — no outside context, no assumptions, no inferred names, and no numbers that are not in the text.",
+  "Keep every relation exactly as the text states it: buyers stay buyers, sellers stay sellers; never merge two separate facts into one new claim.",
+  "If the text does not contain something, leave it out.",
   "Return JSON with exactly these fields:",
   '"summary_bullets": exactly 3 short factual strings (each one sentence, under 30 words),',
   '"why_it_matters": one sentence explaining why this matters to a reader,',
@@ -152,25 +155,25 @@ function articleUser(item: RawItem, text: string): string {
 }
 
 const BRIEFING_SYSTEM = [
-  "You write the daily briefing for one topic in a personal newspaper (3 to 4 sentences).",
+  "You write the daily briefing for one topic in a personal newspaper: 3 to 4 sentences, at most 120 words.",
   "Use ONLY the supplied stored article summaries — never invent facts, numbers or names.",
   'Return JSON with a single field "text".',
 ].join(" ");
 
+/** Sends only stored titles + summary bullets — never extracted full text. */
 function briefingUser(topic: string, date: string, rows: NewArticle[]): string {
   const summaries = rows
     .map(
-      (row, index) =>
-        `${index + 1}. ${row.title} — ${row.summaryBullets.join(" ")} Why it matters: ${row.whyItMatters}`,
+      (row, index) => `${index + 1}. ${row.title} — ${row.summaryBullets.join(" ")}`,
     )
     .join("\n");
   return [
     `Date: ${date}`,
     `Topic: ${topic}`,
-    "Stored summaries:",
+    "Stored article titles and summary bullets (nothing else):",
     summaries,
     "",
-    "Reply with ONE JSON object only (no markdown, no commentary) with exactly one key: text (the 3- to 4-sentence briefing).",
+    "Reply with ONE JSON object only (no markdown, no commentary) with exactly one key: text (the 3- to 4-sentence briefing, at most 120 words).",
     'Example shape: {"text":"Sentence one. Sentence two. Sentence three."}',
   ].join("\n");
 }
@@ -252,7 +255,7 @@ async function main(): Promise<void> {
     async (item) => {
       attempted++;
       try {
-        const text = await extractReadableText(
+        const { text, fullPage } = await extractArticleText(
           item.url,
           item.summary,
           item.title,
@@ -265,13 +268,53 @@ async function main(): Promise<void> {
           log(`no readable text for ${item.url} — skipping`);
           return;
         }
-        const summary = await groq.complete({
+        // Everything the summary may legitimately draw from: the excerpt the
+        // model saw, the full page (beyond the 6000-char cut), the feed
+        // summary and the title.
+        const basis = guardBasis(text, fullPage, stripTags(item.summary), item.title);
+        let summary = await groq.complete({
           what: `summary for "${item.title.slice(0, 60)}"`,
           system: ARTICLE_SYSTEM,
           user: articleUser(item, text),
           jsonSchema: ARTICLE_JSON_SCHEMA,
           zodSchema: ArticleSummarySchema,
         });
+
+        // Source-text guard: every capitalized multi-word name and every
+        // number in the output must occur in the article text. One retry,
+        // then the article is skipped (never stored unverified).
+        let violations = findViolations(
+          summaryOutputText(summary.summary_bullets, summary.why_it_matters),
+          basis,
+        );
+        if (violations.length > 0) {
+          log(
+            `guard: not in source — ${violations
+              .map((violation) => `"${violation.token}"`)
+              .join(", ")} — retrying once`,
+          );
+          const retry = await groq.complete({
+            what: `summary (guard retry) for "${item.title.slice(0, 60)}"`,
+            system: ARTICLE_SYSTEM,
+            user: articleUser(item, text),
+            jsonSchema: ARTICLE_JSON_SCHEMA,
+            zodSchema: ArticleSummarySchema,
+          });
+          violations = findViolations(
+            summaryOutputText(retry.summary_bullets, retry.why_it_matters),
+            basis,
+          );
+          if (violations.length > 0) {
+            skipped++;
+            logError(
+              `guard failed after retry — skipping: ${item.url} (${violations
+                .map((violation) => `"${violation.token}"`)
+                .join(", ")})`,
+            );
+            return;
+          }
+          summary = retry;
+        }
 
         const row: NewArticle = {
           url: item.url,
@@ -319,48 +362,87 @@ async function main(): Promise<void> {
   );
   skipped += toProcess.length - attempted; // never attempted (rate-limit stop)
 
-  // 4. One briefing per topic that got new articles today (stored summaries
-  //    only), upserted on (date, topic).
+  // 4. Separate briefing pass, strictly after the articles are saved: one
+  //    request at a time with a pause between requests (retry-after is
+  //    honored inside GroqClient). If GROQ_MODEL_FAST keeps returning 429,
+  //    briefings fall back to GROQ_MODEL_SMART (briefings only) rather than
+  //    failing the run; a briefing is always skippable, never fatal.
   if (rows.length > 0) {
     const today = new Date().toISOString().slice(0, 10);
     const topics = [...new Set(rows.map((row) => row.topic))];
+    const PAUSE_BETWEEN_MS = 3_000;
+    let briefingGroq = groq; // GROQ_MODEL_FAST unless rate-limited
+    let fellBack = false;
 
-    for (const topic of topics) {
-      if (groq.stopped) {
-        logError("briefings skipped — stopping after persistent rate limits");
-        break;
+    for (let index = 0; index < topics.length; index++) {
+      const topic = topics[index];
+      if (index > 0) {
+        await new Promise((resolve) => setTimeout(resolve, PAUSE_BETWEEN_MS));
       }
-      try {
-        const topicRows = rows.filter((row) => row.topic === topic);
-        const briefing = await groq.complete({
-          what: `briefing for ${topic}`,
-          system: BRIEFING_SYSTEM,
-          user: briefingUser(topic, today, topicRows),
-          jsonSchema: BRIEFING_JSON_SCHEMA,
-          zodSchema: BriefingSchema,
-        });
+      const topicRows = rows.filter((row) => row.topic === topic);
+      const briefingArgs = {
+        what: `briefing for ${topic}`,
+        system: BRIEFING_SYSTEM,
+        user: briefingUser(topic, today, topicRows),
+        jsonSchema: BRIEFING_JSON_SCHEMA,
+        zodSchema: BriefingSchema,
+      };
 
-        if (options.dryRun) {
-          log(`[dry-run] would upsert briefing ${today}/${topic}: ${briefing.text}`);
-        } else if (db) {
-          const ok = await upsertBriefing(db, {
-            date: today,
-            topic,
-            text: briefing.text,
-          });
-          if (ok) log(`briefing saved for ${topic} (${today})`);
-          else failed++;
+      let briefing: { text: string } | null = null;
+      try {
+        briefing = await briefingGroq.complete(briefingArgs);
+      } catch (error) {
+        if (error instanceof RateLimitExhaustedError && !fellBack) {
+          // Fast model exhausted — switch to the smart model for briefings.
+          fellBack = true;
+          try {
+            briefingGroq = new GroqClient("GROQ_MODEL_SMART");
+            log("fast model rate limited — briefings continue on GROQ_MODEL_SMART");
+            briefing = await briefingGroq.complete(briefingArgs);
+          } catch (fallbackError) {
+            if (fallbackError instanceof RateLimitExhaustedError) {
+              logError(
+                "rate limits on both models — skipping remaining briefings",
+              );
+              break;
+            }
+            failed++;
+            logError(
+              `briefing failed for ${topic} — ${
+                fallbackError instanceof Error
+                  ? fallbackError.message
+                  : String(fallbackError)
+              }`,
+            );
+          }
+        } else if (error instanceof RateLimitExhaustedError) {
+          logError(
+            "rate limits persisted on GROQ_MODEL_SMART — skipping remaining briefings",
+          );
+          break;
         } else {
           failed++;
+          logError(
+            `briefing failed for ${topic} — ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         }
-      } catch (error) {
-        if (error instanceof RateLimitExhaustedError) break;
+      }
+      if (!briefing) continue; // skipped rather than failed
+
+      if (options.dryRun) {
+        log(`[dry-run] would upsert briefing ${today}/${topic}: ${briefing.text}`);
+      } else if (db) {
+        const ok = await upsertBriefing(db, {
+          date: today,
+          topic,
+          text: briefing.text,
+        });
+        if (ok) log(`briefing saved for ${topic} (${today})`);
+        else failed++;
+      } else {
         failed++;
-        logError(
-          `briefing failed for ${topic} — ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
       }
     }
   }

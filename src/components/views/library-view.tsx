@@ -5,6 +5,7 @@ import { FileText, Newspaper, Search, SearchX } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { libraryItems, formatDate, type LibraryItem } from "@/lib/mock-data";
 
@@ -70,6 +71,9 @@ export function LibraryView() {
           <p className="mt-1 text-sm text-muted-foreground">
             Everything you saved — articles and papers, in one place.
           </p>
+          <Badge className="mt-2 bg-brand/10 text-brand hover:bg-brand/10">
+            Preview: sample data
+          </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
           {filtered.length} of {libraryItems.length} items

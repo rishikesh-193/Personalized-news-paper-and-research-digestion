@@ -118,16 +118,21 @@ function ArticleCard({ article, lead = false }: { article: TodayArticle; lead?: 
           <p className="mt-1 text-sm leading-relaxed">{article.whyItMatters}</p>
         </div>
       ) : null}
-      <a
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        Read original
-        <ExternalLink className="size-3.5" aria-hidden="true" />
-        <span className="sr-only">(opens in a new tab)</span>
-      </a>
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          Read original
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          <span className="sr-only">(opens in a new tab)</span>
+        </a>
+        <span className="text-xs text-muted-foreground">
+          AI-generated summary. Check the source.
+        </span>
+      </div>
     </article>
   );
 }
@@ -305,19 +310,14 @@ export function TodayView({ articles, interests, briefings }: TodayViewProps) {
         </section>
 
         <aside className="order-3 space-y-4 lg:col-span-3" aria-label="Briefing">
-          <Card>
-            <CardHeader>
-              <CardTitle>Daily briefing</CardTitle>
-              <CardDescription>For your topics</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-              {briefings.length === 0 ? (
-                <p>
-                  No briefing for your topics yet — it lands with the next
-                  ingestion run.
-                </p>
-              ) : (
-                briefings.map((briefing) => (
+          {briefings.length === 0 ? null : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Daily briefing</CardTitle>
+                <CardDescription>For your topics</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+                {briefings.map((briefing) => (
                   <div
                     key={`${briefing.date}-${briefing.topic}`}
                     className="border-b border-border/60 pb-3 last:border-0 last:pb-0"
@@ -337,10 +337,10 @@ export function TodayView({ articles, interests, briefings }: TodayViewProps) {
                       {briefing.text}
                     </p>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

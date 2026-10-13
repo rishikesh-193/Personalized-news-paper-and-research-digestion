@@ -59,7 +59,7 @@ export const ArticleSummarySchema = z.object({
 export type ArticleSummary = z.infer<typeof ArticleSummarySchema>;
 
 export const BriefingSchema = z.object({
-  text: z.string().min(40).max(1200),
+  text: z.string().min(40).max(800),
 });
 
 /** JSON schema sent to Groq structured-output mode. */

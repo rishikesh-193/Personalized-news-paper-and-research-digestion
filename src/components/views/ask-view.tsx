@@ -6,6 +6,7 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import {
   askSuggestions,
@@ -93,6 +94,9 @@ export function AskView() {
           <p className="mt-1 text-sm text-muted-foreground">
             Answers come only from the articles and papers you&rsquo;ve saved.
           </p>
+          <Badge className="mt-2 bg-brand/10 text-brand hover:bg-brand/10">
+            Preview: sample data
+          </Badge>
         </div>
         <Button
           variant="outline"
