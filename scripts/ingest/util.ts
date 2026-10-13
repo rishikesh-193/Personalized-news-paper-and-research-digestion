@@ -19,6 +19,66 @@ export function normalizeUrl(raw: string): string | null {
   }
 }
 
+/**
+ * Named entities feeds actually emit. Numeric entities (&#8217;, &#x2019;)
+ * are handled generically; anything unknown is left untouched rather than
+ * guessed at.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  laquo: "«",
+  raquo: "»",
+  bull: "•",
+  middot: "·",
+  times: "×",
+  deg: "°",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  euro: "€",
+  pound: "£",
+  yen: "¥",
+};
+
+/**
+ * Decodes HTML entities in feed-provided text. Feeds often wrap titles in
+ * entities ("Apple&#8217;s HomeView"), which must not reach the database as
+ * literal "&#8217;" text in the UI.
+ */
+export function decodeHtmlEntities(input: string): string {
+  if (!input || !input.includes("&")) return input;
+  return input.replace(
+    /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g,
+    (match, body: string) => {
+      if (body.startsWith("#x") || body.startsWith("#X")) {
+        const code = Number.parseInt(body.slice(2), 16);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : match;
+      }
+      if (body.startsWith("#")) {
+        const code = Number.parseInt(body.slice(1), 10);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : match;
+      }
+      return NAMED_ENTITIES[body.toLowerCase()] ?? match;
+    },
+  );
+}
+
 /** Lowercased, punctuation-free title used for near-duplicate detection. */
 export function normalizeTitle(title: string): string {
   return title

@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 import type { FeedConfig } from "../feeds";
 import type { RawItem, SourceAdapter } from "./types";
-import { USER_AGENT, logError } from "../util";
+import { USER_AGENT, decodeHtmlEntities, logError } from "../util";
 
 /** RSS/Atom adapter — the only adapter in Phase 5; a news-API adapter can be
  * added later as one new file implementing SourceAdapter. */
@@ -23,9 +23,13 @@ export class RssAdapter implements SourceAdapter {
           return (parsed.items ?? [])
             .map((item): RawItem => ({
               url: item.link ?? "",
-              title: (item.title ?? "").trim(),
+              // Feeds hand back HTML entities ("Apple&#8217;s") — store the
+              // decoded characters so titles read correctly everywhere.
+              title: decodeHtmlEntities((item.title ?? "").trim()),
               publishedAt: item.isoDate ? new Date(item.isoDate) : null,
-              summary: item.contentSnippet ?? item.content ?? item.summary ?? "",
+              summary: decodeHtmlEntities(
+                item.contentSnippet ?? item.content ?? item.summary ?? "",
+              ),
               source: feed.source,
               topic: feed.topic,
             }))
