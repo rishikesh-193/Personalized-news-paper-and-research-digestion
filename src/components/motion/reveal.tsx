@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion } from "motion/react";
 import { useEffectsPreference } from "./effects-preference";
+import { REVEAL_VIEWPORT } from "./reveal-viewport";
 
 type RevealTag =
   | "div"
@@ -78,7 +79,7 @@ export function Reveal({
         className={className}
         initial="hidden"
         whileInView="visible"
-        viewport={{ once: true, amount: 0.2 }}
+        viewport={REVEAL_VIEWPORT}
         variants={{
           hidden: {},
           visible: { transition: { staggerChildren: stagger, delayChildren: delay } },
@@ -108,7 +109,7 @@ export function Reveal({
       className={className}
       initial={{ opacity: 0, y: distance }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
+      viewport={REVEAL_VIEWPORT}
       transition={{ duration: 0.55, delay, ease: EASE }}
     >
       {children}

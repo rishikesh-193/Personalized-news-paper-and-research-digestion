@@ -97,3 +97,56 @@ export function rankArticles<T extends RankingArticle>(
   );
   return ranked;
 }
+
+/**
+ * Spreads a ranked list across topics so no single category monopolises the
+ * feed.
+ *
+ * Ranking alone cannot fix this: it orders stories by how well each one fits
+ * the reader, so a category that simply has more articles in the database fills
+ * more of the page. Measured on production, a reader who followed six topics saw
+ * 17 of their 32 stories (53%) from Technology alone, because Technology held 17
+ * of the 66 stored articles.
+ *
+ * This takes one story per topic per round — each topic contributing its best
+ * remaining story — so the edition alternates categories instead of running one
+ * topic down the page. Within a topic, the ranked order is preserved, and topics
+ * are ordered by their strongest story, so the single most relevant story in the
+ * edition is still the lead and relevance still decides the top of the page.
+ *
+ * Deterministic and pure, mirroring how `scripts/ingest/allocate.ts` rotates
+ * across categories when spending its ingestion budget.
+ */
+export function interleaveByTopic<T extends RankingArticle>(
+  ranked: RankedArticle<T>[],
+): RankedArticle<T>[] {
+  if (ranked.length === 0) return [];
+
+  const queues = new Map<string, RankedArticle<T>[]>();
+  for (const entry of ranked) {
+    const key = entry.article.topic.trim() || "General";
+    const queue = queues.get(key);
+    if (queue) queue.push(entry);
+    else queues.set(key, [entry]);
+  }
+
+  // Already in rank order within each topic; order the topics by their best
+  // entry so the strongest story overall stays first.
+  const orderedQueues = [...queues.values()].sort(
+    (a, b) => b[0].score - a[0].score,
+  );
+
+  const interleaved: RankedArticle<T>[] = [];
+  for (let round = 0; interleaved.length < ranked.length; round += 1) {
+    let advanced = false;
+    for (const queue of orderedQueues) {
+      const entry = queue[round];
+      if (entry) {
+        interleaved.push(entry);
+        advanced = true;
+      }
+    }
+    if (!advanced) break;
+  }
+  return interleaved;
+}

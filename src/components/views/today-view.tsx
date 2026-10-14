@@ -69,6 +69,16 @@ interface TodayViewProps {
   userState?: Record<string, ArticleUserState>;
 }
 
+/**
+ * Pointer tilt shared by EVERY story card, in degrees.
+ *
+ * Kept deliberately small and identical across cards: the lead story is
+ * distinguished by its size, badge and paper edge, not by having a different
+ * interaction. Previously the lead tilted at 3 degrees while every other card
+ * was pinned at 0, so the rest of the page behaved like another component.
+ */
+const CARD_TILT_DEGREES = 3;
+
 function formatDay(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
@@ -106,12 +116,15 @@ function ArticleCard({
   return (
     <TiltCard
       as="article"
-      // Only the lead story tilts: a page of tilting cards is noise, and the
-      // pointer effect is skipped entirely on touch and reduced motion.
-      max={lead ? 3 : 0}
+      // Same pointer behaviour on every card — the lead is separated by layout,
+      // not by a different interaction system. The effect is still skipped
+      // entirely on touch devices and under reduced motion (see TiltCard).
+      max={CARD_TILT_DEGREES}
       glare={false}
       className={cn(
-        "rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40",
+        // `focus-within` gives the border cue to keyboard users too, matching
+        // what hover shows a pointer user.
+        "rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40 focus-within:border-brand/40",
         lead && "paper-edge",
       )}
     >

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Reveal, useEffectsPreference } from "@/components/motion";
+import { panelTiming, panelZIndex } from "./deck-timing";
 
 /**
  * The scroll sequence: the newspaper separates into the three product panels.
@@ -192,19 +193,27 @@ function DeckPanel({
   progress: MotionValue<number>;
   total: number;
 }) {
-  const start = index / total;
-  const end = start + 1 / total;
+  // Keyframes live in the pure deck-timing module. Two things it fixes: the
+  // first panel is opaque at progress 0, so the pinned stage never opens on an
+  // empty frame; and every panel except the last fades out before the next
+  // arrives, so the three cards succeed one another instead of all staying
+  // opaque and piling up on top of each other.
+  const { stops, values, from, to } = panelTiming(index, total);
 
-  const opacity = useTransform(progress, [start, start + 0.08], [0, 1]);
-  const y = useTransform(progress, [start, end], [64, 0]);
-  const scale = useTransform(progress, [start, end], [0.9, 1]);
-  const rotateY = useTransform(progress, [start, end], [11, 0]);
-  const rotateX = useTransform(progress, [start, end], [7, 0]);
+  const opacity = useTransform(progress, stops, values);
+  const y = useTransform(progress, [from, to], [64, 0]);
+  const scale = useTransform(progress, [from, to], [0.9, 1]);
+  const rotateY = useTransform(progress, [from, to], [11, 0]);
+  const rotateX = useTransform(progress, [from, to], [7, 0]);
 
   return (
     <motion.div
-      style={{ opacity, y, scale, rotateY, rotateX, zIndex: index }}
-      className="absolute inset-x-0 mx-auto w-full max-w-2xl [transform-style:preserve-3d] [perspective:1200px]"
+      style={{ opacity, y, scale, rotateY, rotateX, zIndex: panelZIndex(index) }}
+      // Deliberately NOT `[perspective:1200px]`. Perspective applies to an
+      // element's CHILDREN, so setting it on the same node that carries the
+      // rotation is a no-op: the rotateY/rotateX above were being drawn flat.
+      // The perspective now lives on the deck stage, where it takes effect.
+      className="absolute inset-x-0 mx-auto w-full max-w-2xl [transform-style:preserve-3d]"
     >
       <StoryCard panel={panel} />
     </motion.div>
@@ -238,7 +247,7 @@ function Deck() {
             />
           ))}
         </div>
-        <div className="relative h-[440px] w-full max-w-3xl px-6">
+        <div className="relative h-[440px] w-full max-w-3xl px-6 [perspective:1200px]">
           {PANELS.map((panel, index) => (
             <DeckPanel
               key={panel.key}

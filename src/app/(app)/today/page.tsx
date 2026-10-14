@@ -7,7 +7,7 @@ import {
   type TodayBriefing,
 } from "@/components/views/today-view";
 import { createClient } from "@/lib/supabase/server";
-import { rankArticles } from "@/lib/ranking";
+import { interleaveByTopic, rankArticles } from "@/lib/ranking";
 import { expandInterests } from "@/lib/topic-groups";
 
 export const metadata: Metadata = { title: "Today" };
@@ -136,7 +136,12 @@ export default async function TodayPage() {
           negativeTopics,
           seenIds,
         });
-        articles = ranked.map(({ article, reason }) => ({
+        // Interleave across topics before rendering: ranking alone lets a
+        // category that dominates the database dominate the page, which is how
+        // one topic came to supply over half of a six-topic reader's edition.
+        // The strongest story overall still leads, because topics are ordered
+        // by their best entry.
+        articles = interleaveByTopic(ranked).map(({ article, reason }) => ({
           ...article,
           reason,
         }));

@@ -7,6 +7,21 @@ import { ContactShadows } from "@react-three/drei";
 import { useSceneState } from "@/components/motion";
 import { createFrontPageTexture } from "./paper-texture";
 import { createRandom } from "./prng";
+import {
+  SCENE_CAMERA_DISTANCE,
+  SCENE_FOV_DEGREES,
+  SHEET_HEIGHT,
+  SHEET_LOW_POWER_SPREAD,
+  SHEET_SCROLL_LIFT,
+  SHEET_SCROLL_ROLL,
+  SHEET_SPREAD,
+  SHEET_WIDTH,
+  SHEET_Z_GAP,
+  heroSheets,
+  sheetIsTextured,
+  sheetThickness,
+  sheetTint,
+} from "./sheet-layout";
 
 /**
  * The hero scene: a small stack of newspaper sheets floating over the page.
@@ -46,15 +61,12 @@ function Sheets({ lowPower }: { lowPower: boolean }) {
 
   React.useEffect(() => () => texture.dispose(), [texture]);
 
+  // Sheet geometry lives in a pure module (sheet-layout.ts) so the depth
+  // ordering can be tested without WebGL. A per-sheet yaw used to swing sheets
+  // through each other and hide the front page's left third; the layout now
+  // varies roll only and is guarded by a test.
   const sheets = React.useMemo(
-    () =>
-      [
-        // Front page: the sheet carrying the drawn texture.
-        { y: 0.06, rotY: -0.05, rotZ: 0.015, tint: "#ffffff", textured: true },
-        { y: -0.06, rotY: 0.06, rotZ: -0.02, tint: "#F1E9DE", textured: false },
-        { y: -0.18, rotY: -0.02, rotZ: 0.03, tint: "#EADFD2", textured: false },
-        { y: -0.3, rotY: 0.09, rotZ: -0.035, tint: "#E4D8C9", textured: false },
-      ].slice(0, lowPower ? 3 : 4),
+    () => heroSheets(lowPower ? 3 : 4),
     [lowPower],
   );
 
@@ -68,34 +80,50 @@ function Sheets({ lowPower }: { lowPower: boolean }) {
     const targetX = -pointer.y * 0.16 + Math.cos(t * 0.14) * 0.03;
     group.rotation.y += (targetY - group.rotation.y) * Math.min(1, delta * 2.4);
     group.rotation.x += (targetX - group.rotation.x) * Math.min(1, delta * 2.4);
-    group.position.y = -scrollProgress * 0.5;
-    group.rotation.z = scrollProgress * -0.06;
+    // Scroll fans the sheets outward so the stack opens as the reader moves
+    // down the page, and lifts it very slightly.
+    //
+    // Two deliberate constraints, both from the framing in <NewspaperScene>:
+    // the lift is small and UPWARD, because the composition must never be
+    // pushed out of the bottom of the canvas (it was, which is what clipped the
+    // stack); and the lift, the roll and the fan are all bounded so the whole
+    // stack stays inside the view frustum at every scroll position.
+    group.position.y = scrollProgress * SHEET_SCROLL_LIFT;
+    group.rotation.z = scrollProgress * SHEET_SCROLL_ROLL;
 
-    // Scroll pushes the sheets apart, so the stack opens as the reader moves
-    // down the page. Applied here because scroll does not re-render React.
-    const spread = lowPower ? 0.07 : 0.11;
+    // Applied here because scroll does not re-render React.
+    const spread = lowPower ? SHEET_LOW_POWER_SPREAD : SHEET_SPREAD;
+    const centre = (sheets.length - 1) / 2;
     group.children.forEach((child, index) => {
-      const offset = index - 1.5;
+      const offset = index - centre;
       child.position.x = offset * spread * 0.9 * (1 + scrollProgress * 1.6);
-      child.position.z = (index - 1.5) * -0.055 * (1 + scrollProgress);
+      // Depth stays strictly ordered as the stack opens: the fan must never be
+      // able to reorder the sheets, or the back sheets would cover the page.
+      child.position.z = -index * SHEET_Z_GAP;
     });
   });
 
   return (
     <group ref={root}>
-      {sheets.map((sheet, index) => (
+      {sheets.map((sheet) => (
           <mesh
-            key={index}
+            key={sheet.index}
             // x and z are owned by the frame loop, which opens the stack on
             // scroll; this is only the starting position.
-            position={[(index - 1.5) * 0.1, sheet.y, (index - 1.5) * -0.055]}
+            position={[sheet.x, sheet.y, sheet.z]}
             rotation={[0, sheet.rotY, sheet.rotZ]}
             castShadow
           >
-            <boxGeometry args={[2.95, 3.9, 0.014 + index * 0.002]} />
+            <boxGeometry
+              args={[
+                SHEET_WIDTH,
+                SHEET_HEIGHT,
+                sheetThickness(sheet.index),
+              ]}
+            />
             <meshStandardMaterial
-              map={sheet.textured ? texture : undefined}
-              color={sheet.textured ? "#ffffff" : sheet.tint}
+              map={sheetIsTextured(sheet.index) ? texture : undefined}
+              color={sheetIsTextured(sheet.index) ? "#ffffff" : sheetTint(sheet.index)}
               roughness={0.72}
               metalness={0.02}
             />
@@ -154,8 +182,10 @@ function Ink({ count }: { count: number }) {
 function Rig() {
   const { camera } = useThree();
   // Pulled back far enough that the fanned stack clears the canvas edges at
-  // every aspect ratio the hero column takes.
-  const base = React.useRef(new THREE.Vector3(0, 0, 9.6));
+  // every aspect ratio the hero column takes, counting the scroll lift, the
+  // roll and the full spread. `stackBounds` and the framing test in
+  // tests/presentation.test.ts assert this against the same constants.
+  const base = React.useRef(new THREE.Vector3(0, 0, SCENE_CAMERA_DISTANCE));
 
   useFrame(() => {
     camera.position.lerp(base.current, 0.08);
@@ -173,7 +203,12 @@ export function NewspaperScene() {
       // Never render twice when the tab is hidden: "never" parks the loop.
       frameloop={paused ? "never" : "always"}
       dpr={dpr}
-      camera={{ position: [0, 0, 9.6], fov: 28, near: 0.1, far: 40 }}
+      camera={{
+        position: [0, 0, SCENE_CAMERA_DISTANCE],
+        fov: SCENE_FOV_DEGREES,
+        near: 0.1,
+        far: 40,
+      }}
       gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance" }}
       shadows={!lowPower}
       style={{ background: "transparent" }}
@@ -193,7 +228,9 @@ export function NewspaperScene() {
       <Ink count={lowPower ? 24 : 90} />
       {!lowPower ? (
         <ContactShadows
-          position={[0, -2.65, 0]}
+          // Just under the stack. At -2.65 this sat outside the frustum and
+          // rendered nothing at all.
+          position={[0, -2.4, 0]}
           opacity={0.28}
           scale={11}
           blur={2.6}

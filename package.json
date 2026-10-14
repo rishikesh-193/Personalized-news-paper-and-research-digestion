@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "ingest": "tsx scripts/ingest/index.ts",
-    "test": "tsx --test tests/ranking.test.ts tests/ask-core.test.ts tests/guard.test.ts tests/ingest-util.test.ts tests/discovery.test.ts tests/visualization.test.ts tests/coverage.test.ts"
+    "test": "tsx --test tests/ranking.test.ts tests/ask-core.test.ts tests/guard.test.ts tests/ingest-util.test.ts tests/discovery.test.ts tests/visualization.test.ts tests/coverage.test.ts tests/presentation.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
