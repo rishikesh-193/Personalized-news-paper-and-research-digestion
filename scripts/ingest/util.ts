@@ -1,17 +1,58 @@
 /** Small shared helpers for the ingestion job. */
 
 /**
- * Strips tracking parameters (utm_*) and fragments; keeps everything else.
- * Returns null for unparseable URLs.
+ * Query parameters that identify a campaign, referrer or click, never the
+ * article. Two links to the same story must normalize to the same string, or
+ * the same article gets ingested and summarized twice.
+ */
+const TRACKING_PARAMS = new Set([
+  "fbclid",
+  "gclid",
+  "dclid",
+  "msclkid",
+  "yclid",
+  "igshid",
+  "mc_cid",
+  "mc_eid",
+  "_hsenc",
+  "_hsmi",
+  "_ga",
+  "_gl",
+  "ref_src",
+  "ref_url",
+  "cmpid",
+  "cmp",
+  "at_medium",
+  "at_campaign",
+  "ito",
+  "spm",
+  "guccounter",
+  "guce_referrer",
+  "guce_referrer_sig",
+  "__twitter_impression",
+  "share_id",
+]);
+
+/**
+ * Strips tracking/campaign parameters and fragments, drops a decorative
+ * trailing slash, and lowercases the host. Everything else (including
+ * meaningful query strings such as `?id=7`) is preserved. Returns null for
+ * unparseable URLs.
  */
 export function normalizeUrl(raw: string): string | null {
   try {
     const url = new URL(raw.trim());
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
-      if (key.toLowerCase().startsWith("utm_")) {
+      const lower = key.toLowerCase();
+      if (lower.startsWith("utm_") || TRACKING_PARAMS.has(lower)) {
         url.searchParams.delete(key);
       }
+    }
+    // `//example.org/story/` and `//example.org/story` are the same page; only
+    // collapse the trailing slash when there is no query to preserve.
+    if (url.pathname.length > 1 && url.pathname.endsWith("/") && !url.search) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
     }
     return url.toString();
   } catch {
@@ -106,6 +147,51 @@ export async function fetchWithTimeout(
     throw new Error(`HTTP ${response.status} for ${url}`);
   }
   return response;
+}
+
+/**
+ * fetch with a hard timeout plus bounded retries for transient failures
+ * (network errors, 429 and 5xx). 4xx other than 429 is a permanent answer and
+ * is returned immediately so a dead feed fails fast instead of burning the
+ * per-run time budget. Backoff is exponential with jitter-free determinism.
+ */
+export async function fetchWithRetry(
+  url: string,
+  { timeoutMs = 15_000, retries = 2, init = {} }: {
+    timeoutMs?: number;
+    retries?: number;
+    init?: RequestInit;
+  } = {},
+): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { "User-Agent": USER_AGENT, ...init.headers },
+      });
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt < retries) {
+          await sleep(Math.min(8_000, 500 * 2 ** attempt));
+          lastError = new Error(`HTTP ${response.status} for ${url}`);
+          continue;
+        }
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(Math.min(8_000, 500 * 2 ** attempt));
+        continue;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

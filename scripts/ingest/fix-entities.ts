@@ -7,7 +7,8 @@
  *
  * Idempotent and non-destructive: it only rewrites a title when decoding
  * actually changes it, never deletes rows, and touches no other column.
- * Needs SUPABASE_SERVICE_ROLE_KEY (articles have no user write policy).
+ * Needs SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY) —
+ * articles have no user write policy.
  */
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local", quiet: true });
@@ -16,14 +17,15 @@ import { createClient } from "@supabase/supabase-js";
 import { decodeHtmlEntities } from "./util";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SERVICE_KEY =
+  process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
 
   if (!SUPABASE_URL || !SERVICE_KEY) {
     console.error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in the environment.",
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the environment.",
     );
     process.exit(1);
   }

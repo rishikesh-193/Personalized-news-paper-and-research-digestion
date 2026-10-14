@@ -3,8 +3,17 @@ import { log, logError } from "./util";
 
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-/** Per-call retry cap for HTTP 429 before we call the limit persistent. */
-const MAX_429_RETRIES = 4;
+/**
+ * Per-call retry cap for HTTP 429 before we call the limit persistent.
+ *
+ * Raised from 4 after a measured run (2026-10-14): with only 4 retries the
+ * job abandoned ~52 of 60 selected articles because Groq's free-tier limit
+ * resets per minute and the backoff sequence (2s, 4s, 8s, 16s) finished
+ * inside a single limit window. The scheduled job has a 45-minute budget, so
+ * waiting longer is strictly better than dropping the work — anything still
+ * unprocessed is simply picked up by the next run.
+ */
+const MAX_429_RETRIES = 9;
 const BACKOFF_BASE_MS = 2_000;
 const BACKOFF_CAP_MS = 60_000;
 /** Total attempts per call: original + one retry on invalid output. */

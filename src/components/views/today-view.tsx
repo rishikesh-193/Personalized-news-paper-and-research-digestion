@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
 import { Reveal, TiltCard } from "@/components/motion";
+import { topicsForInterest } from "@/lib/topic-groups";
 import {
   setArticleReactionAction,
   toggleSaveArticleAction,
@@ -297,13 +298,13 @@ export function TodayView({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
 
-  const filtered = useMemo(
-    () =>
-      activeTab === null
-        ? articles
-        : articles.filter((article) => article.topic === activeTab),
-    [activeTab, articles],
-  );
+  // A tab matches its own tag plus the tags it includes (the Sports tab also
+  // shows Cricket, Football, …) so the tab and the server query agree.
+  const filtered = useMemo(() => {
+    if (activeTab === null) return articles;
+    const tags = new Set(topicsForInterest(activeTab));
+    return articles.filter((article) => tags.has(article.topic));
+  }, [activeTab, articles]);
 
   // "Sources today" — computed from the data, never hard-coded.
   const sourceCounts = useMemo(() => {

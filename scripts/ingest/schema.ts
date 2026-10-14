@@ -25,6 +25,7 @@ export const TOPIC_LABELS = [
   "Real Estate",
   "Personal Finance",
   "Jobs",
+  "India",
   "World",
   "Politics",
   "Education",
@@ -50,10 +51,18 @@ export const TOPIC_LABELS = [
   "Outdoors",
 ] as const;
 
+/**
+ * Summary shape returned by the model.
+ *
+ * Deliberately has NO `topic` field: the stored topic comes from the feed
+ * config (scripts/ingest/feeds.ts) via classify.resolveTopic, because the
+ * per-run allocator balances by feed topic — letting the model reassign it
+ * afterwards would undo that balancing and reintroduce silent
+ * misclassification. Subtopics come from classify.classifySubtopic.
+ */
 export const ArticleSummarySchema = z.object({
   summary_bullets: z.array(z.string().min(1)).length(3),
   why_it_matters: z.string().min(1),
-  topic: z.enum(TOPIC_LABELS),
 });
 
 export type ArticleSummary = z.infer<typeof ArticleSummarySchema>;
@@ -77,9 +86,8 @@ export const ARTICLE_JSON_SCHEMA = {
         maxItems: 3,
       },
       why_it_matters: { type: "string" },
-      topic: { type: "string", enum: [...TOPIC_LABELS] },
     },
-    required: ["summary_bullets", "why_it_matters", "topic"],
+    required: ["summary_bullets", "why_it_matters"],
   },
 } as const;
 

@@ -41,9 +41,12 @@ function exitAfterFlush(code: number): void {
 
 async function main(): Promise<void> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey =
+    process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) missing",
+    );
   }
   const db = createClient(supabaseUrl, serviceKey);
 
@@ -56,7 +59,7 @@ async function main(): Promise<void> {
 
   // Feed summaries are part of the legitimate source basis (they can be
   // what the model saw when a page fetch failed at generation time).
-  const feedItems = await new RssAdapter(FEEDS).fetch();
+  const { items: feedItems } = await new RssAdapter(FEEDS).fetch();
   const feedByNormalizedUrl = new Map<string, string>();
   for (const item of feedItems) {
     const normalized = normalizeUrl(item.url);

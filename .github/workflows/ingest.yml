@@ -1,8 +1,11 @@
 # Chronicle ingestion — twice daily at 00:30 and 12:30 UTC (6:00 / 18:00 IST).
 # Secrets required in Settings → Secrets and variables → Actions:
-#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#   NEXT_PUBLIC_SUPABASE_URL,
+#   SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY),
 #   GROQ_API_KEY, GROQ_MODEL_FAST
-# Optional repository variable: INGEST_MAX_NEW (defaults to 25 in code).
+# Optional repository variables (both have code defaults):
+#   INGEST_MAX_NEW          articles per run (default 60)
+#   INGEST_MAX_PER_CATEGORY ceiling per category (default 6)
 name: Ingest
 
 on:
@@ -14,7 +17,11 @@ on:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The registry now holds 200+ feeds and the per-run budget is larger, so
+    # the job needs more room than the original 24-feed version. Feeds are
+    # fetched with bounded concurrency and a per-feed timeout, and the run
+    # stops cleanly if Groq rate limits persist.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +40,8 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL_FAST: ${{ secrets.GROQ_MODEL_FAST }}
-          INGEST_MAX_NEW: ${{ vars.INGEST_MAX_NEW || '25' }}
+          INGEST_MAX_NEW: ${{ vars.INGEST_MAX_NEW || '60' }}
+          INGEST_MAX_PER_CATEGORY: ${{ vars.INGEST_MAX_PER_CATEGORY || '6' }}

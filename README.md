@@ -37,7 +37,8 @@ npm run dev
 | `GROQ_MODEL_FAST` | ingestion summaries and briefings |
 | `GROQ_MODEL_SMART` | research digests, comparisons, briefs, Ask |
 | `TAVILY_API_KEY` | server only — web results in Research → Discover; without it the Discover tab offers papers only |
-| `INGEST_MAX_NEW` | optional ingestion cap (default 25) |
+| `INGEST_MAX_NEW` | optional ingestion cap per run (default 60) |
+| `INGEST_MAX_PER_CATEGORY` | optional per-category ceiling per run (default 6) |
 
 ## Database migrations
 
@@ -54,6 +55,10 @@ idempotent.
 3. `003_discovery.sql` — `research_papers` and `research_searches` for
    Research → Discover (search + brief). Read-only for signed-in users;
    writes happen server-side with the secret key.
+4. `004_coverage.sql` — `articles.subtopic` (a fine-grained label inside
+   `topic_tag`) plus indexes for the Today feed query. Optional for ingestion
+   to run: without it the pipeline detects the missing column, logs a warning
+   and stores topics without subtopics.
 
 > **Required before the Research Lab works live:** run `002_research.sql`.
 > Until then, PDF upload fails with a friendly error naming the migration.
@@ -109,24 +114,64 @@ npm run ingest -- --limit 10  # at most 10 new articles
 npm run ingest -- --dry-run   # no DB writes, prints a preview
 ```
 
-- Feeds are configured in `scripts/ingest/feeds.ts` (topic-tagged RSS).
-- Items are deduplicated by canonical URL and normalized title, must be
-  within a 3-day freshness window, and are capped per run with round-robin
-  fairness across feeds.
+- Feeds are configured in `scripts/ingest/feeds.ts`: ~220 enabled RSS/Atom
+  sources covering **every** onboarding topic, each tagged with a canonical
+  topic, its subtopics, a region and a language. Feeds that stopped working
+  are parked with `enabled: false` plus the observed failure reason, so a
+  known-bad URL is never silently re-added.
+- **Check the registry against reality at any time:**
+  `npx tsx scripts/ingest/audit.ts --feeds --all` probes every URL and reports
+  which feeds return usable, recent items; `--db` reports what is actually
+  stored per category. `--json` emits both for scripting.
+- **Check that supply reaches a reader:** `npx tsx scripts/ingest/check-today.ts`
+  replays the exact Today query (hierarchy expansion, 7-day window, limit 60)
+  for sample interest sets, so "the feeds never supplied it" can be told apart
+  from "the pipeline could not store it".
+- Feeds are fetched with bounded concurrency (12 at a time), a per-feed
+  timeout, and bounded retries for transient 429/5xx and network errors. One
+  dead feed never fails the run — it is reported and skipped.
+- Items are deduplicated by canonical URL (tracking/click parameters and
+  fragments stripped) and by normalized title, must be within a 3-day
+  freshness window, and are allocated with **fair rotation across categories**
+  (`scripts/ingest/allocate.ts`): every category gets a slot before any
+  category gets a second, and within a category the sources rotate so one
+  prolific publisher cannot fill its category's slice.
+- The stored `topic_tag` is **deterministic** — it comes from the feed config,
+  never from the model — so the fair allocation actually balances stored
+  categories. Subtopics (Cricket, PlayStation, Models, …) are derived by
+  ordered keyword rules in `scripts/ingest/classify.ts`, falling back to the
+  feed's declared subtopic rather than guessing.
 - Summaries are generated once with structured output, validated with zod,
   then checked by a **source-text guard**: every capitalized multi-word name
   and every number must occur in the article text (one retry, then skip).
+- Every run ends with a **per-run report**: sources attempted/ok/empty/failed,
+  entries fetched vs dated, candidates, stored per category, duplicates,
+  unusable text, extraction/invalid-output/guard failures, rate-limit events,
+  duration, and the exact list of feeds that failed and why.
 - 429 responses honor `retry-after`, back off exponentially, and stop the
   run cleanly; briefings fall back to the smart model if needed.
 - Scheduled twice daily by `.github/workflows/ingest.yml`
-  (secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `GROQ_API_KEY`, `GROQ_MODEL_FAST`; optional var `INGEST_MAX_NEW`).
+  (secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY` or the legacy
+  `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GROQ_MODEL_FAST`; optional vars
+  `INGEST_MAX_NEW`, `INGEST_MAX_PER_CATEGORY`).
+- **The binding constraint is the Groq rate limit, not feed supply.** Measured
+  2026-10-14: 219 feeds expose ~7,500 entries and ~3,990 fresh unique
+  candidates per run, but a run is limited by how many summaries Groq will
+  accept. `MAX_429_RETRIES` in `scripts/ingest/groq.ts` was raised to 9 so a
+  run rides out a per-minute limit window instead of abandoning its queue; a
+  run that still gets stopped is reported via `stopped early: N selected
+  article(s) were never attempted` and those articles are picked up next run.
+- **Google News RSS is deliberately not used as a source.** Its items are
+  plausible but their `<link>` is a `news.google.com/rss/articles/…` redirect
+  that does not resolve to the publisher, so Readability extracts zero
+  characters and nothing can be summarized. Verified 2026-10-14.
 
 ## Tests and checks
 
 ```bash
-npm test             # unit tests: ranking, retrieval, citations, guard, chunking, discovery
+npm test             # unit tests: ranking, retrieval, citations, guard, chunking, discovery, coverage
 npx tsx scripts/discover-smoke.ts "retrieval augmented generation"   # real arXiv search
+npx tsx scripts/ingest/audit.ts                    # real feed probe + stored coverage
 npm run lint
 npx tsc --noEmit
 npm run build

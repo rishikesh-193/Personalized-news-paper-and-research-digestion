@@ -86,7 +86,7 @@ All user-owned tables carry `user_id uuid references auth.users` and have Row Le
 |---|---|---|
 | `profiles` | id (= auth uid), full_name, avatar_url, onboarded | own row |
 | `interests` | user_id, topic | own rows |
-| `articles` | id, url (unique), title, source_name, summary_bullets, why_it_matters, topic_tag, published_at | read: any signed-in user; write: service role only |
+| `articles` | id, url (unique), title, source_name, summary_bullets, why_it_matters, topic_tag, subtopic, published_at | read: any signed-in user; write: service role only |
 | `daily_briefings` | date, topic, text | read: signed-in; write: service role only |
 | `article_events` | user_id, article_id, event (view / save / like / dislike / skip), created_at | own rows |
 | `documents` | id, user_id, file_name, storage_path, digest_json | own rows |
@@ -98,8 +98,11 @@ Vector search must be a Postgres function that filters by `auth.uid()`, so one u
 ## 7. Pipelines
 
 **Ingestion (scheduled, once or twice daily)**
-fetch from source adapters (V1: curated RSS feeds per topic, plus arXiv and Hacker News; a news-API adapter can be added later without changing the rest) → skip URLs already stored → extract text → summarize ONCE (3 bullets, one-line why it matters, topic tag) → save to `articles`.
-Cap new articles per run, batch the LLM calls, and retry with backoff on rate-limit errors.
+fetch from source adapters (V1: curated RSS feeds per topic, plus arXiv and Hacker News; a news-API adapter can be added later without changing the rest) → skip URLs already stored → extract text → summarize ONCE (3 bullets, one-line why it matters) → save to `articles`.
+Feeds are fetched with bounded concurrency, a per-feed timeout and bounded retries; one dead feed is reported and skipped, never fatal.
+The per-run budget is allocated with **fair rotation across categories** (every category gets a slot before any category gets a second, and sources rotate within a category) so no single category or publisher monopolizes a run.
+`topic_tag` is **deterministic** — it comes from the feed config, never from the model — and `subtopic` comes from ordered keyword rules with a safe fallback, so categories balance exactly as allocated.
+Cap new articles per run, reject duplicates and unusable items before any LLM call, and retry with backoff on rate-limit errors.
 
 **Reading**
 User opens Today → read stored articles from Supabase → filter and rank for the user → render. No LLM call.

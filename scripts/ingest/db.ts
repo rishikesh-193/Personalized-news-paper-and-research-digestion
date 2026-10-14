@@ -14,6 +14,8 @@ export interface NewArticle {
   summaryBullets: string[];
   whyItMatters: string;
   topic: string;
+  /** Fine-grained label inside `topic` (see classify.SUBTOPIC_LABELS). */
+  subtopic: string | null;
 }
 
 export interface BriefingRow {
@@ -86,12 +88,50 @@ export async function fetchExistingArticles(
 
 export type InsertResult = "inserted" | "duplicate" | "failed";
 
+/** Row shape written to `articles` (camelCase inputs mapped to columns). */
+interface ArticleInsert {
+  url: string;
+  title: string;
+  source_name: string;
+  published_at: string | null;
+  summary_bullets: string[];
+  why_it_matters: string;
+  topic_tag: string;
+}
+
+/** Same row plus the optional column added by migration 004. */
+interface ArticleInsertWithSubtopic extends ArticleInsert {
+  subtopic?: string | null;
+}
+
+/**
+ * Whether `articles.subtopic` exists. `null` until the first insert tells us.
+ * Migration 004 adds the column; until it is applied the run keeps working and
+ * simply stores topics without subtopics instead of failing every insert.
+ */
+let subtopicSupported: boolean | null = null;
+
+/** True once the run has learned that migration 004 is not applied yet. */
+export function subtopicColumnMissing(): boolean {
+  return subtopicSupported === false;
+}
+
+/** PostgREST reports an unknown column this way (PGRST204, schema cache miss). */
+function isMissingSubtopic(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "PGRST204" ||
+    (typeof error.message === "string" &&
+      error.message.includes("subtopic") &&
+      /column|schema cache/i.test(error.message))
+  );
+}
+
 /** Inserts one summarized article; a unique-URL conflict counts as duplicate. */
 export async function insertArticle(
   db: SupabaseClient,
   article: NewArticle,
 ): Promise<InsertResult> {
-  const { error } = await db.from("articles").insert({
+  const row: ArticleInsert = {
     url: article.url,
     title: article.title,
     source_name: article.sourceName,
@@ -99,10 +139,37 @@ export async function insertArticle(
     summary_bullets: article.summaryBullets,
     why_it_matters: article.whyItMatters,
     topic_tag: article.topic,
-  });
+  };
 
-  if (!error) return "inserted";
+  // Only send `subtopic` while it is believed to exist, so a run against a
+  // database without migration 004 does not pay for a failed insert per
+  // article. The first attempt discovers the truth.
+  const includeSubtopic = subtopicSupported !== false;
+  const payload: ArticleInsertWithSubtopic = includeSubtopic
+    ? { ...row, subtopic: article.subtopic }
+    : row;
+  const { error } = await db.from("articles").insert(payload);
+
+  if (!error) {
+    subtopicSupported = true;
+    return "inserted";
+  }
   if (error.code === "23505") return "duplicate";
+
+  if (includeSubtopic && isMissingSubtopic(error)) {
+    // Migration 004 not applied — remember it and retry this article without
+    // the column so no article is lost to a schema mismatch.
+    subtopicSupported = false;
+    logError(
+      "articles.subtopic is missing — run supabase/migrations/004_coverage.sql; " +
+        "continuing without subtopics for this run",
+    );
+    const retry = await db.from("articles").insert(row);
+    if (!retry.error) return "inserted";
+    if (retry.error.code === "23505") return "duplicate";
+    logError(`insert failed for ${article.url} — ${retry.error.message}`);
+    return "failed";
+  }
 
   logError(`insert failed for ${article.url} — ${error.message}`);
   return "failed";

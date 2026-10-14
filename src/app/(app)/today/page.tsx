@@ -8,6 +8,7 @@ import {
 } from "@/components/views/today-view";
 import { createClient } from "@/lib/supabase/server";
 import { rankArticles } from "@/lib/ranking";
+import { expandInterests } from "@/lib/topic-groups";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -84,13 +85,18 @@ export default async function TodayPage() {
     sinceDate.setDate(sinceDate.getDate() - 7);
     const since = sinceDate.toISOString();
 
+    // Matching tags include each interest plus anything it includes (Sports
+    // covers Cricket/Football/…), so a broad interest is not starved by the
+    // stricter sibling tags. The tabs still show only the chosen interests.
+    const matchedTags = expandInterests(interests);
+
     // Articles — read allowed for any signed-in user (RLS); newest first.
     const { data: articleRows, error: articleError } = await supabase
       .from("articles")
       .select(
         "id, url, title, source_name, published_at, summary_bullets, why_it_matters, topic_tag",
       )
-      .in("topic_tag", interests)
+      .in("topic_tag", matchedTags)
       .gte("published_at", since)
       .order("published_at", { ascending: false })
       .limit(60);
@@ -147,11 +153,13 @@ export default async function TodayPage() {
       }
     }
 
-    // Saved briefings — signed-in read (RLS); newest dates first.
+    // Saved briefings — signed-in read (RLS); newest dates first. Same
+    // hierarchy-aware matching as the feed, so a Sports reader also sees the
+    // cricket and Formula 1 briefings.
     const { data: briefingRows, error: briefingError } = await supabase
       .from("daily_briefings")
       .select("date, topic, text")
-      .in("topic", interests)
+      .in("topic", matchedTags)
       .order("date", { ascending: false })
       .order("topic", { ascending: true })
       .limit(6);

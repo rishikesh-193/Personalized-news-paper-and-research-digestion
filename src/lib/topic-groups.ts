@@ -99,6 +99,7 @@ export const TOPIC_GROUPS: TopicGroup[] = [
   {
     label: "World & Society",
     tiles: [
+      { label: "India", icon: Flag },
       { label: "World", icon: Globe },
       { label: "Politics", icon: Scale },
       { label: "Education", icon: GraduationCap },
@@ -151,6 +152,44 @@ export const ALL_TOPICS: string[] = TOPIC_GROUPS.flatMap((group) =>
 export function isKnownTopic(topic: string): boolean {
   const needle = topic.trim().toLowerCase();
   return ALL_TOPICS.some((label) => label.toLowerCase() === needle);
+}
+
+/**
+ * Topics a reader of the key would also expect to see.
+ *
+ * These exist because some tiles are genuinely BROADER than their siblings:
+ * a reader who picks "Sports" means all sport, not "the general-sports wire
+ * and nothing about cricket". Without this, picking Sports showed only
+ * articles stored under the exact tag "Sports" while every cricket, football
+ * and Formula 1 article stayed invisible — which is exactly the failure the
+ * coverage audit found (35 of 46 topics stored nothing at all).
+ *
+ * Deliberately narrow. "Technology" does NOT pull in AI, Gadgets or
+ * Programming: those are separate tiles a reader can pick individually, and
+ * expanding them would make one tile behave like the whole group. Only
+ * unambiguous supersets are listed.
+ */
+export const TOPIC_INCLUDES: Record<string, string[]> = {
+  Sports: ["Cricket", "Football", "Motorsport", "Cycling", "Esports", "Outdoors"],
+  Gaming: ["Esports"],
+};
+
+/**
+ * Every stored topic tag that satisfies one chosen interest — the interest
+ * itself plus anything it includes. Use this wherever feed rows are matched
+ * against a topic, so the server query and the client-side tab filter agree.
+ */
+export function topicsForInterest(topic: string): string[] {
+  return [topic, ...(TOPIC_INCLUDES[topic] ?? [])];
+}
+
+/** Flattened, de-duplicated tags that satisfy any of the chosen interests. */
+export function expandInterests(interests: string[]): string[] {
+  const tags = new Set<string>();
+  for (const interest of interests) {
+    for (const tag of topicsForInterest(interest)) tags.add(tag);
+  }
+  return [...tags];
 }
 
 /** Suggested sub-topics for step 2, keyed by lowercased topic label. */

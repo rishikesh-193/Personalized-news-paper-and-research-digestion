@@ -43,3 +43,40 @@ test("url normalization strips tracking parameters and fragments", () => {
   );
   assert.equal(normalizeUrl("not a url"), null);
 });
+
+test("click-tracking parameters do not create duplicate articles", () => {
+  // The same story must normalize identically however it was shared, or the
+  // pipeline re-summarizes and re-stores it as if it were new.
+  const canonical = "https://example.org/story";
+  const shared = [
+    "https://example.org/story?fbclid=abc123",
+    "https://example.org/story?gclid=xyz",
+    "https://example.org/story?utm_campaign=x&mc_cid=9",
+    "https://example.org/story?_hsenc=p2ANqtz",
+    "https://example.org/story?igshid=1a2b3c",
+  ];
+  for (const url of shared) {
+    assert.equal(normalizeUrl(url), canonical, url);
+  }
+});
+
+test("a decorative trailing slash is not a different article", () => {
+  assert.equal(normalizeUrl("https://example.org/story/"), "https://example.org/story");
+  assert.equal(normalizeUrl("https://example.org/"), "https://example.org/");
+  assert.equal(
+    normalizeUrl("https://example.org/story/?utm_source=x"),
+    "https://example.org/story",
+  );
+});
+
+test("meaningful query strings survive normalization", () => {
+  // Only known tracking keys are removed — `id` and friends identify content.
+  assert.equal(
+    normalizeUrl("https://example.org/read?id=42&page=2"),
+    "https://example.org/read?id=42&page=2",
+  );
+  assert.equal(
+    normalizeUrl("https://news.example.com/rss/articles/CBMiUk?oc=5"),
+    "https://news.example.com/rss/articles/CBMiUk?oc=5",
+  );
+});
