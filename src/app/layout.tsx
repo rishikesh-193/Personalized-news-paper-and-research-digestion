@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Newsreader } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { EffectsProvider } from "@/components/motion";
 import "./globals.css";
 
 const inter = Inter({
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <EffectsProvider>{children}</EffectsProvider>
         </ThemeProvider>
       </body>
     </html>

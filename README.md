@@ -35,7 +35,8 @@ npm run dev
 | `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) | server + ingestion only |
 | `GROQ_API_KEY` | server + ingestion only — never `NEXT_PUBLIC_` |
 | `GROQ_MODEL_FAST` | ingestion summaries and briefings |
-| `GROQ_MODEL_SMART` | research digests, comparisons, Ask |
+| `GROQ_MODEL_SMART` | research digests, comparisons, briefs, Ask |
+| `TAVILY_API_KEY` | server only — web results in Research → Discover; without it the Discover tab offers papers only |
 | `INGEST_MAX_NEW` | optional ingestion cap (default 25) |
 
 ## Database migrations
@@ -50,6 +51,9 @@ idempotent.
 2. `002_research.sql` — private `documents` storage bucket (PDF-only,
    10 MB cap), `documents.status` / `documents.error_message`, and the
    `document_comparisons` table.
+3. `003_discovery.sql` — `research_papers` and `research_searches` for
+   Research → Discover (search + brief). Read-only for signed-in users;
+   writes happen server-side with the secret key.
 
 > **Required before the Research Lab works live:** run `002_research.sql`.
 > Until then, PDF upload fails with a friendly error naming the migration.
@@ -78,6 +82,25 @@ idempotent.
   audited against the actually-retrieved chunks — an unverifiable citation is
   dropped, never guessed. If nothing relevant is found, it says so.
 
+## Research Discovery (search + brief)
+
+- **Discover** (the default tab on `/research`) searches the **arXiv API**
+  (no key, up to 10 relevance-ranked papers) and **Tavily** (web mode, 5
+  results, `TAVILY_API_KEY`). Results are de-duplicated by arXiv id or
+  canonical URL and stored in `research_papers` under the service-role key.
+  A search is cached for 24 hours in `research_searches`.
+- arXiv asks for at most one request every 3 seconds over one connection;
+  the client serializes every call with ≥3s spacing and reports "try again
+  shortly" instead of breaking that limit.
+- **Research brief**: one `GROQ_MODEL_SMART` call over the top 5 results that
+  have an abstract or snippet, validated with zod (every `[n]` citation and
+  every item index must map to a supplied source). Needs at least 3 usable
+  sources, otherwise the UI says so instead of guessing. The brief and each
+  paper's summary are cached.
+- The UI labels every result "Based on the abstract only" / "Based on a
+  search snippet" and the brief "AI-generated from the sources listed. Check
+  the originals." No page is ever fetched beyond the search snippet.
+
 ## Ingestion
 
 ```bash
@@ -102,7 +125,8 @@ npm run ingest -- --dry-run   # no DB writes, prints a preview
 ## Tests and checks
 
 ```bash
-npm test             # unit tests: ranking, retrieval, citations, guard, chunking
+npm test             # unit tests: ranking, retrieval, citations, guard, chunking, discovery
+npx tsx scripts/discover-smoke.ts "retrieval augmented generation"   # real arXiv search
 npm run lint
 npx tsc --noEmit
 npm run build

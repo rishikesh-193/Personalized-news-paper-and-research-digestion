@@ -222,7 +222,7 @@ function SavedArticleCard({
   const preview = article.summaryBullets[0] ?? article.whyItMatters;
 
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40">
+    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 transition-[border-color,box-shadow] duration-200 hover:border-brand/40 hover:shadow-md">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5 rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand">
           <Newspaper className="size-3" aria-hidden="true" />
@@ -298,7 +298,7 @@ function SavedArticleCard({
 
 function PaperCard({ document }: { document: LibraryDocument }) {
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40">
+    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5 transition-[border-color,box-shadow] duration-200 hover:border-brand/40 hover:shadow-md">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5 rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand">
           <FileText className="size-3" aria-hidden="true" />

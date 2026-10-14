@@ -1,6 +1,7 @@
 import type * as React from "react";
 import Link from "next/link";
 import { AuthNewspaper } from "@/components/AuthNewspaper";
+import { AuthEntrance } from "@/components/auth-entrance";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /**
@@ -27,7 +28,9 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
-          <div className="w-full max-w-[400px]">{children}</div>
+          <div className="paper-edge w-full max-w-[400px] rounded-2xl border border-border bg-card p-6 sm:p-8">
+            <AuthEntrance>{children}</AuthEntrance>
+          </div>
         </main>
       </div>
 

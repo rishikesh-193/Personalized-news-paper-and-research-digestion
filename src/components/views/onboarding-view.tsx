@@ -15,6 +15,7 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Reveal, TiltCard } from "@/components/motion";
 import { completeOnboardingAction } from "@/lib/interests-actions";
 import {
   ALL_TOPICS,
@@ -36,31 +37,38 @@ function TileButton({
 }) {
   const Icon = tile.icon;
   return (
-    <button
+    <TiltCard
+      as="button"
       type="button"
       aria-pressed={active}
       onClick={onClick}
+      max={6}
+      // The transform and its transition are owned by .tilt-card, so colour,
+      // shadow and border are the only properties transitioned here.
       className={cn(
-        "relative flex h-24 flex-col justify-between rounded-xl border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        "relative flex h-24 flex-col justify-between rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         active
-          ? "border-brand bg-brand/10 ring-1 ring-brand"
-          : "border-border bg-background hover:border-brand/40",
+          ? "border-brand bg-brand/10 shadow-lg shadow-brand/15 ring-1 ring-brand"
+          : "border-border bg-background hover:border-brand/40 hover:shadow-md",
       )}
     >
       <Icon
-        className={cn("size-5", active ? "text-brand" : "text-muted-foreground")}
+        className={cn(
+          "size-5 transition-transform duration-300 ease-out",
+          active ? "scale-110 text-brand" : "text-muted-foreground",
+        )}
         aria-hidden="true"
       />
       <span className="font-medium text-foreground">{tile.label}</span>
       {active ? (
         <span
-          className="absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-brand text-brand-foreground"
+          className="animate-in zoom-in-75 fade-in absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-brand text-brand-foreground duration-200 motion-reduce:animate-none"
           aria-hidden="true"
         >
           <Check className="size-3" />
         </span>
       ) : null}
-    </button>
+    </TiltCard>
   );
 }
 
@@ -238,7 +246,11 @@ export function OnboardingView({ next }: { next: string | null }) {
                   >
                     {group.label}
                   </h2>
-                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  <Reveal
+                    stagger={0.03}
+                    distance={14}
+                    className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                  >
                     {group.tiles.map((tile) => (
                       <TileButton
                         key={tile.label}
@@ -247,7 +259,7 @@ export function OnboardingView({ next }: { next: string | null }) {
                         onClick={() => toggleTopic(tile.label)}
                       />
                     ))}
-                  </div>
+                  </Reveal>
                 </section>
               ))}
 
@@ -259,7 +271,11 @@ export function OnboardingView({ next }: { next: string | null }) {
                   >
                     Your topics
                   </h2>
-                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  <Reveal
+                    stagger={0.03}
+                    distance={14}
+                    className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                  >
                     {visibleCustomTiles.map((tile) => (
                       <TileButton
                         key={tile.label}
@@ -268,7 +284,7 @@ export function OnboardingView({ next }: { next: string | null }) {
                         onClick={() => toggleTopic(tile.label)}
                       />
                     ))}
-                  </div>
+                  </Reveal>
                 </section>
               ) : null}
 

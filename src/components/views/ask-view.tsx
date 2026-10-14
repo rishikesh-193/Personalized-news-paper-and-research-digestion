@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "motion/react";
+import { useEffectsPreference } from "@/components/motion";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 
@@ -83,6 +84,62 @@ function Citations({ citations }: { citations: AskCitation[] }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Three ink droplets that swell while the answer is being generated.
+ * The dots stay still under reduced motion — the sr-only "Thinking…" text
+ * carries the state either way, so nothing depends on the animation.
+ */
+function InkOrb() {
+  const { reduceEffects } = useEffectsPreference();
+  return (
+    <span className="flex items-center gap-1" aria-hidden="true">
+      {[0, 1, 2].map((index) => (
+        <motion.span
+          key={index}
+          className="bg-brand/70 block size-2 rounded-full"
+          animate={
+            reduceEffects
+              ? { opacity: 0.6 }
+              : { scale: [0.7, 1, 0.7], opacity: [0.4, 1, 0.4] }
+          }
+          transition={
+            reduceEffects
+              ? { duration: 0 }
+              : {
+                  duration: 1.1,
+                  repeat: Infinity,
+                  delay: index * 0.16,
+                  ease: "easeInOut",
+                }
+          }
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Message wrapper: a short rise on arrival, skipped under reduced motion. */
+function MessageShell({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { reduceEffects } = useEffectsPreference();
+  if (reduceEffects) return <div className={className}>{children}</div>;
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -253,13 +310,13 @@ export function AskView({
         ) : (
           messages.map((message) =>
             message.role === "user" ? (
-              <div key={message.id} className="flex justify-end">
+              <MessageShell key={message.id} className="flex justify-end">
                 <p className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
                   {message.content}
                 </p>
-              </div>
+              </MessageShell>
             ) : (
-              <div
+              <MessageShell
                 key={message.id}
                 className="max-w-[95%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3.5 text-sm leading-relaxed"
               >
@@ -267,7 +324,7 @@ export function AskView({
                 {message.citations?.length ? (
                   <Citations citations={message.citations} />
                 ) : null}
-              </div>
+              </MessageShell>
             ),
           )
         )}
@@ -277,9 +334,7 @@ export function AskView({
             className="flex w-fit items-center gap-1.5 rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3.5"
             role="status"
           >
-            <Skeleton className="size-2 rounded-full" />
-            <Skeleton className="size-2 rounded-full" />
-            <Skeleton className="size-2 rounded-full" />
+            <InkOrb />
             <span className="sr-only">Thinking…</span>
           </div>
         ) : null}

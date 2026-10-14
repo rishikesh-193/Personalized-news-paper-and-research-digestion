@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { DiscoverView } from "@/components/views/discover-view";
 import { createClient } from "@/lib/supabase/client";
 import {
   ResearchDigestSchema,
@@ -146,7 +147,11 @@ interface ComparisonResult {
   cached: boolean;
 }
 
-export function ResearchView() {
+/**
+ * "My documents" tab — the existing upload / digest / compare experience.
+ * Rendered unchanged inside the ResearchView tab shell below.
+ */
+function DocumentsPanel() {
   const [docs, setDocs] = React.useState<DocRow[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [jobs, setJobs] = React.useState<UploadJob[]>([]);
@@ -460,16 +465,6 @@ export function ResearchView() {
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-border pb-4">
-        <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">
-          Research Lab
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Drop in a paper to get an executive summary, key findings, statistics,
-          limitations and open questions.
-        </p>
-      </div>
-
       <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/50 px-4 py-3">
         <AlertTriangle
           className="mt-0.5 size-4 shrink-0 text-brand"
@@ -540,7 +535,7 @@ export function ResearchView() {
           {jobs.map((job) => (
             <li
               key={job.key}
-              className="rounded-xl border border-border bg-card px-4 py-3"
+              className="rounded-xl border border-border bg-card px-4 py-3 transition-shadow duration-200 hover:shadow-md"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -662,7 +657,7 @@ export function ResearchView() {
               return (
                 <li
                   key={doc.id}
-                  className="rounded-xl border border-border bg-card px-4 py-3"
+                  className="rounded-xl border border-border bg-card px-4 py-3 transition-shadow duration-200 hover:shadow-md"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
@@ -811,7 +806,7 @@ export function ResearchView() {
               </table>
             </CardContent>
           </Card>
-          <div className="rounded-xl border border-border bg-card p-4">
+          <div className="paper-edge rounded-xl border border-border bg-card p-4 transition-shadow duration-200 hover:shadow-md">
             <SectionHeading>How they differ</SectionHeading>
             <BulletList items={compare.result.comparison.differences} />
           </div>
@@ -905,6 +900,70 @@ export function ResearchView() {
           </Card>
         </section>
       )}
+    </div>
+  );
+}
+
+const TABS = [
+  { value: "discover", label: "Discover" },
+  { value: "documents", label: "My documents" },
+] as const;
+
+type ResearchTab = (typeof TABS)[number]["value"];
+
+/**
+ * /research — two tabs. Discover (default) searches papers and articles and
+ * builds a brief over them; My documents is the existing PDF workflow.
+ * `webEnabled` comes from the server, which alone can see TAVILY_API_KEY.
+ */
+export function ResearchView({ webEnabled }: { webEnabled: boolean }) {
+  const [tab, setTab] = React.useState<ResearchTab>("discover");
+
+  return (
+    <div className="space-y-8">
+      <div className="border-b border-border pb-4">
+        <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">
+          Research Lab
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Discover papers and articles, or upload a PDF to get an executive
+          summary, key findings, statistics, limitations and open questions.
+        </p>
+      </div>
+
+      <div role="tablist" aria-label="Research sections" className="flex gap-1.5">
+        {TABS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            id={`research-tab-${item.value}`}
+            aria-selected={tab === item.value}
+            aria-controls={`research-panel-${item.value}`}
+            onClick={() => setTab(item.value)}
+            className={cn(
+              "rounded-full border px-4 py-1.5 text-sm transition-colors",
+              tab === item.value
+                ? "border-brand bg-brand/10 text-brand"
+                : "border-border text-muted-foreground hover:border-brand/50",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="tabpanel"
+        id={`research-panel-${tab}`}
+        aria-labelledby={`research-tab-${tab}`}
+      >
+        {tab === "discover" ? (
+          <DiscoverView webEnabled={webEnabled} />
+        ) : (
+          <DocumentsPanel />
+        )}
+      </div>
     </div>
   );
 }

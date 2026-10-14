@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
+import { Reveal, TiltCard } from "@/components/motion";
 import {
   setArticleReactionAction,
   toggleSaveArticleAction,
@@ -102,7 +103,17 @@ function ArticleCard({
   state?: ArticleUserState;
 }) {
   return (
-    <article className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40">
+    <TiltCard
+      as="article"
+      // Only the lead story tilts: a page of tilting cards is noise, and the
+      // pointer effect is skipped entirely on touch and reduced motion.
+      max={lead ? 3 : 0}
+      glare={false}
+      className={cn(
+        "rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand/40",
+        lead && "paper-edge",
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {lead ? (
           <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold tracking-wider text-brand-foreground uppercase">
@@ -171,7 +182,7 @@ function ArticleCard({
         </span>
       </div>
       <CardActions articleId={article.id} state={state} />
-    </article>
+    </TiltCard>
   );
 }
 
@@ -345,9 +356,9 @@ export function TodayView({
             aria-selected={activeTab === null}
             onClick={() => setActiveTab(null)}
             className={cn(
-              "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-[color,background-color,border-color,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               activeTab === null
-                ? "border-brand bg-brand text-brand-foreground"
+                ? "scale-[1.03] border-brand bg-brand text-brand-foreground"
                 : "border-border bg-background text-muted-foreground hover:text-foreground",
             )}
           >
@@ -363,9 +374,9 @@ export function TodayView({
                 aria-selected={active}
                 onClick={() => setActiveTab(active ? null : topic)}
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  "whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition-[color,background-color,border-color,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                   active
-                    ? "border-brand bg-brand text-brand-foreground"
+                    ? "scale-[1.03] border-brand bg-brand text-brand-foreground"
                     : "border-border bg-background text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -443,8 +454,14 @@ export function TodayView({
             )
           ) : (
             <>
-              <ArticleCard article={lead} lead state={userState[lead.id]} />
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+              <Reveal>
+                <ArticleCard article={lead} lead state={userState[lead.id]} />
+              </Reveal>
+              <Reveal
+                stagger={0.04}
+                distance={14}
+                className="grid gap-4 md:grid-cols-2 lg:grid-cols-1"
+              >
                 {rest.map((article) => (
                   <ArticleCard
                     key={article.id}
@@ -452,12 +469,16 @@ export function TodayView({
                     state={userState[article.id]}
                   />
                 ))}
-              </div>
+              </Reveal>
             </>
           )}
         </section>
 
-        <aside className="order-3 space-y-4 lg:col-span-3" aria-label="Briefing">
+        <Reveal
+          as="aside"
+          aria-label="Briefing"
+          className="order-3 space-y-4 lg:col-span-3"
+        >
           {briefings.length === 0 ? null : (
             <Card>
               <CardHeader>
@@ -502,19 +523,28 @@ export function TodayView({
                 </p>
               ) : (
                 <ol className="space-y-4">
+                  {/* Each item is animated as the <li> itself, so the list
+                      keeps its real semantics — a revealed wrapper element
+                      around the items would inject a div into the list. */}
                   {threeThings.map((item, index) => (
-                    <li key={item} className="flex gap-3">
+                    <Reveal
+                      as="li"
+                      key={item}
+                      distance={10}
+                      delay={index * 0.07}
+                      className="flex gap-3"
+                    >
                       <span className="font-heading text-lg leading-none text-brand">
                         {index + 1}
                       </span>
                       <span className="text-sm leading-relaxed">{item}</span>
-                    </li>
+                    </Reveal>
                   ))}
                 </ol>
               )}
             </CardContent>
           </Card>
-        </aside>
+        </Reveal>
       </div>
     </div>
   );

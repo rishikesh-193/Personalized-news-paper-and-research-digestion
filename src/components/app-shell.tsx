@@ -9,7 +9,9 @@ import {
   LogOut,
   Settings,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { cn } from "cn";
+import { PageTransition, useEffectsPreference } from "@/components/motion";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -34,22 +36,43 @@ const navItems = [
   { href: "/ask", label: "Ask" },
 ];
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({
+  href,
+  label,
+  indicatorId,
+}: {
+  href: string;
+  label: string;
+  /** Separate layout group per nav, so the two navs never share one pill. */
+  indicatorId: string;
+}) {
   const pathname = usePathname();
   const active = pathname === href;
+  const { reduceEffects } = useEffectsPreference();
 
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+        "relative rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
         active
-          ? "bg-muted text-foreground"
+          ? reduceEffects
+            ? "bg-muted text-foreground"
+            : "text-foreground"
           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
       )}
     >
-      {label}
+      {/* The indicator is one element that slides between items rather than a
+          background that blinks on and off. */}
+      {active && !reduceEffects ? (
+        <motion.span
+          layoutId={indicatorId}
+          className="bg-muted absolute inset-0 -z-10 rounded-lg"
+          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+        />
+      ) : null}
+      <span className="relative">{label}</span>
     </Link>
   );
 }
@@ -175,7 +198,7 @@ export function AppShell({
           </Link>
           <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
             {navItems.map((item) => (
-              <NavLink key={item.href} {...item} />
+              <NavLink key={item.href} {...item} indicatorId="nav-desktop" />
             ))}
           </nav>
           <div className="flex items-center gap-1.5">
@@ -188,13 +211,19 @@ export function AppShell({
           aria-label="Main"
         >
           {navItems.map((item) => (
-            <NavLink key={item.href} {...item} />
+            <NavLink key={item.href} {...item} indicatorId="nav-mobile" />
           ))}
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {children}
+      <main className="relative mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        {/* Barely-there depth wash. Static on purpose: a moving backdrop would
+            compete with the reading surface it sits under. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(55%_35%_at_50%_0%,color-mix(in_oklab,var(--caramel)_9%,transparent),transparent_75%)]"
+        />
+        <PageTransition>{children}</PageTransition>
       </main>
 
       <footer className="border-t border-border">

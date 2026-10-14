@@ -79,7 +79,7 @@ export function FormError({ message }: { message: string | null }) {
     <p
       role="alert"
       aria-live="polite"
-      className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive duration-300 motion-reduce:animate-none"
     >
       {message}
     </p>
@@ -93,7 +93,7 @@ export function FormNotice({ message }: { message: string | null }) {
     <p
       role="status"
       aria-live="polite"
-      className="rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-sm text-brand"
+      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-sm text-brand duration-300 motion-reduce:animate-none"
     >
       {message}
     </p>

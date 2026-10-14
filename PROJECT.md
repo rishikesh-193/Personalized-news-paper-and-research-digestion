@@ -21,7 +21,8 @@ Goal: replace 1 to 2 hours of browsing with a 5 to 10 minute personalized briefi
 
 ## 3. Stack
 
-- Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui, lucide-react, Framer Motion
+- Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui, lucide-react
+- Motion: `motion` (the Framer Motion successor) for React-level motion. Real WebGL via `three`, `@react-three/fiber` (React 19 compatible) and `@react-three/drei`, used only for the landing hero and the auth illustration.
 - Supabase: Postgres, Auth (Google provider), Storage, pgvector
 - Groq API (OpenAI-compatible) for summarization, classification, research digests and Ask answers
 - Embeddings: Supabase Edge Function `embed` using the built-in `gte-small` model (384 dimensions). Groq does not provide embeddings, and Hugging Face's hosted API has only tiny free credits, so embeddings run inside Supabase instead.
@@ -121,7 +122,26 @@ Score = interest match + recency + boost for topics the user liked or saved − 
 - One accent color. 1px neutral borders, generous whitespace, grid of cards.
 - Auth pages (`/login`, `/signup`, `/forgot-password`, `/reset-password`): split screen. Left: centered form, max width about 400px (logo mark, heading, subtitle, labeled fields, show/hide password, primary button, "Sign in with Google" button, switch link). Right: full-height `public/auth-newspaper.svg` (object-fit: cover), hidden on small screens. Use Chronicle's palette, not purple. No "Remember me" checkbox (sessions already persist).
 - Onboarding: big tiles with icon, clear selected state, search, live counter, sticky Continue bar. Must feel like picking favorites, not filling a form.
-- Landing page may be cinematic with scroll-driven motion. **The app itself stays calm and readable.** No 3D in the app screens.
+- Landing page may be cinematic with scroll-driven motion.
+- Chronicle uses an immersive, editorial, 3D-flavored visual language. Real WebGL scenes are reserved primarily for the landing page and selected authentication/onboarding illustrations. Authenticated application screens use restrained CSS 3D, perspective, depth, and motion. Article text, Ask messages, citations, and PDF reading views remain flat, high-contrast, and readable.
+- Extended depth palette (layered surfaces over the existing cream/ink tokens): warm cream `#F4EEE6`, muted caramel accent `#DB9F75`, muted border `#E1E8E2`. Rust `#B33A1E` stays the light-mode brand accent and `#E8674A` the dark-mode one. Do not introduce a purple-dominant theme.
+
+### 3D and Motion Rules
+
+1. No more than one shared WebGL Canvas per page.
+2. WebGL scenes are dynamically loaded with SSR disabled only at an appropriate client-component boundary.
+3. Device pixel ratio is capped at 1.5.
+4. Use `frameloop="demand"` for static scenes where possible.
+5. Pause or substantially reduce rendering when the document is hidden or the scene is off-screen.
+6. Respect `prefers-reduced-motion`.
+7. Provide static fallbacks when WebGL is unsupported or disabled.
+8. On viewports narrower than 768px, simplify scenes, reduce particles, and disable expensive postprocessing.
+9. Keep text over visual backgrounds on readable surfaces with sufficient contrast.
+10. Do not add purple-heavy visual themes.
+11. Do not make LLM calls or change authentication, data fetching, ingestion, database schemas, or Supabase business logic for visual effects.
+12. Keep all existing application workflows functional.
+
+All nonessential motion is also gated by the persistent **Reduce effects** setting in `/settings` (client-side, hydration-safe). When it is on, WebGL scenes, pointer tilt/parallax and scroll-linked animation are disabled.
 - Every screen needs loading skeletons, empty states, and error states.
 
 ## 10. Security and legal

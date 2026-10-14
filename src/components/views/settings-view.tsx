@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ALL_TOPICS, isKnownTopic } from "@/lib/topic-groups";
+import { useEffectsPreference } from "@/components/motion";
 
 /** Neutral fallback when claims carry no display name. */
 const FALLBACK_NAME = "Reader";
@@ -37,6 +38,8 @@ export function SettingsView({
   initialInterests: string[] | null;
 }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const { reduceEffects, preference, setPreference, ready } =
+    useEffectsPreference();
   const router = useRouter();
   const [signingOut, startSigningOut] = React.useTransition();
   const [saving, startSaving] = React.useTransition();
@@ -153,6 +156,48 @@ export function SettingsView({
               </button>
             );
           })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Motion</CardTitle>
+          <CardDescription>How much the interface moves.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-medium">Reduce effects</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Turns off 3D scenes, pointer tilt and scroll-linked animation.
+              Article text, citations and reading views are unaffected.
+            </p>
+            {reduceEffects && !preference ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Your system also asks for reduced motion, so effects stay off.
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={preference}
+            aria-label="Reduce effects"
+            // Disabled until the stored value has been read, so the control can
+            // never write a value derived from the pre-hydration default.
+            disabled={!ready}
+            onClick={() => setPreference(!preference)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-60",
+              preference ? "border-brand bg-brand" : "border-border bg-muted",
+            )}
+          >
+            <span
+              className={cn(
+                "size-4 rounded-full bg-card shadow-sm transition-transform duration-200 ease-out",
+                preference ? "translate-x-6" : "translate-x-1",
+              )}
+            />
+          </button>
         </CardContent>
       </Card>
 

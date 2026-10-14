@@ -34,6 +34,12 @@ export interface CompleteArgs<T> {
   user: string;
   jsonSchema: JsonSchemaSpec;
   zodSchema: ZodType<T>;
+  /**
+   * Overrides the default `low` reasoning effort for this one call. A call that
+   * has to make a judgement (rather than restate text) is more consistent when
+   * it is allowed to think briefly first.
+   */
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
 function sleep(ms: number): Promise<void> {
@@ -248,7 +254,9 @@ export class GroqClient {
       const body = {
         model: this.model,
         temperature: this.useTemperature ? 0.2 : undefined,
-        reasoning_effort: this.useReasoningEffort ? "low" : undefined,
+        reasoning_effort: this.useReasoningEffort
+          ? (args.reasoningEffort ?? "low")
+          : undefined,
         max_completion_tokens: MAX_COMPLETION_TOKENS,
         messages: [
           { role: "system", content: args.system },
