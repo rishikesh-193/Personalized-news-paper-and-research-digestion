@@ -58,7 +58,8 @@ create table if not exists public.documents (
   user_id uuid not null references auth.users (id) on delete cascade,
   file_name text not null,
   storage_path text not null,
-  digest_json jsonb
+  digest_json jsonb,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.chunks (

@@ -43,6 +43,7 @@ interface DocRow {
   status: "processing" | "ready" | "failed";
   errorMessage: string | null;
   digest: ResearchDigest | null;
+  createdAt?: string | null;
 }
 
 interface UploadJob {
@@ -68,6 +69,7 @@ function toDocRow(row: {
   status: unknown;
   error_message: unknown;
   digest_json: unknown;
+  created_at?: unknown;
 }): DocRow {
   const parsed = row.digest_json
     ? ResearchDigestSchema.safeParse(row.digest_json)
@@ -82,6 +84,7 @@ function toDocRow(row: {
         : "processing",
     errorMessage: row.error_message ? String(row.error_message) : null,
     digest: parsed && parsed.success ? parsed.data : null,
+    createdAt: row.created_at ? String(row.created_at) : null,
   };
 }
 
@@ -154,6 +157,7 @@ interface ComparisonResult {
 function DocumentsPanel() {
   const [docs, setDocs] = React.useState<DocRow[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [jobs, setJobs] = React.useState<UploadJob[]>([]);
   const [dragOver, setDragOver] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
@@ -176,30 +180,79 @@ function DocumentsPanel() {
 
   /** Loads the user's documents (RLS-scoped) and retires finished jobs. */
   const refresh = React.useCallback(async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("documents")
-      .select(
-        "id, file_name, storage_path, status, error_message, digest_json",
-      )
-      .order("created_at", { ascending: false });
-    if (error || !data) {
-      setLoadError(
-        "Could not load your documents. If this persists, run the 002_research.sql migration.",
+    setIsRefreshing(true);
+    try {
+      const supabase = createClient();
+      let data: Array<{
+        id: unknown;
+        file_name: unknown;
+        storage_path: unknown;
+        status: unknown;
+        error_message: unknown;
+        digest_json: unknown;
+        created_at?: unknown;
+      }> | null = null;
+      let error: { code?: string; message?: string } | null = null;
+
+      const primary = await supabase
+        .from("documents")
+        .select(
+          "id, file_name, storage_path, status, error_message, digest_json, created_at",
+        )
+        .order("created_at", { ascending: false });
+
+      data = primary.data;
+      error = primary.error;
+
+      // Resilient fallback: if the database column created_at has not been added yet
+      // (Postgres code 42703), fetch without ordering by created_at.
+      if (error && error.code === "42703") {
+        const fallback = await supabase
+          .from("documents")
+          .select(
+            "id, file_name, storage_path, status, error_message, digest_json",
+          );
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error || !data) {
+        console.error("Failed to load research documents:", error);
+        const isMissingSchema =
+          error?.code === "42703" ||
+          error?.code === "42P01" ||
+          (error?.message && error.message.toLowerCase().includes("does not exist"));
+        setLoadError(
+          isMissingSchema
+            ? `Could not load your documents (${error?.message ?? "schema error"}). If this persists, run the 002_research.sql migration.`
+            : error?.message
+              ? `Could not load your documents: ${error.message}`
+              : "Could not load your documents. If this persists, run the 002_research.sql migration.",
+        );
+        return;
+      }
+
+      setLoadError(null);
+      const rows = data.map(toDocRow);
+      setDocs(rows);
+      // A job is done once its row reaches a terminal state (the list shows it).
+      setJobs((prev) =>
+        prev.filter((job) => {
+          if (!job.storagePath) return true;
+          const row = rows.find((item) => item.storagePath === job.storagePath);
+          return !(row && row.status !== "processing");
+        }),
       );
-      return;
+    } catch (err) {
+      console.error("Unexpected error loading research documents:", err);
+      setLoadError(
+        err instanceof Error
+          ? `Could not load your documents: ${err.message}`
+          : "Could not load your documents. Please try again.",
+      );
+    } finally {
+      setIsRefreshing(false);
     }
-    setLoadError(null);
-    const rows = data.map(toDocRow);
-    setDocs(rows);
-    // A job is done once its row reaches a terminal state (the list shows it).
-    setJobs((prev) =>
-      prev.filter((job) => {
-        if (!job.storagePath) return true;
-        const row = rows.find((item) => item.storagePath === job.storagePath);
-        return !(row && row.status !== "processing");
-      }),
-    );
   }, []);
 
   React.useEffect(() => {
@@ -588,9 +641,14 @@ function DocumentsPanel() {
             type="button"
             variant="outline"
             size="sm"
+            disabled={isRefreshing}
             onClick={() => void refresh()}
           >
-            <RotateCcw className="size-3.5" aria-hidden="true" />
+            {isRefreshing ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="size-3.5" aria-hidden="true" />
+            )}
             Try again
           </Button>
         </div>
@@ -640,10 +698,12 @@ function DocumentsPanel() {
         )}
 
         {docs === null ? (
-          <div className="space-y-2">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
+          loadError ? null : (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          )
         ) : docs.length === 0 ? (
           <EmptyState
             icon={FileText}
