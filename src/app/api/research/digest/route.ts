@@ -5,10 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   ResearchDigestSchema,
   RESEARCH_JSON_SCHEMA,
-  SECTION_JSON_SCHEMA,
-  SectionDigestSchema,
   type ResearchDigest,
-  type SectionDigest,
 } from "@/lib/research-schema";
 import {
   GroqClient,
@@ -41,51 +38,21 @@ Rules:
 - limitations: only limitations the paper itself states or that directly follow from its stated method.
 - title: the paper's own title; if none is present, use the supplied file name.`;
 
-const SECTION_SYSTEM = `You are extracting faithful notes from ONE section of a research paper for a later map-reduce summary.
-Rules:
-- Use ONLY this section's text. Never invent numbers or claims.
-- important_statistics: copy values exactly as written; empty list if none.
-- Return empty lists for anything this section does not contain.
-- Capture the section's key findings, main arguments, limitations and open questions as bullet strings.`;
+/**
+ * Ensures paper text sent to Groq stays well within the TPM rate limit budget (~6k tokens)
+ * while preserving the essential research sections:
+ * - Abstract, Introduction, Problem Formulation (beginning)
+ * - Results, Discussion, Limitations, Conclusion (end)
+ */
+export function preparePaperText(text: string): string {
+  if (text.length <= SECTION_CHAR_LIMIT) return text;
 
-const COMBINE_SYSTEM = `You are combining per-section notes of ONE paper into a final structured digest.
-Rules:
-- Use ONLY the supplied notes, which came from the paper's text. Never invent numbers or claims.
-- important_statistics: keep values exactly as given; empty list if the notes contain none.
-- Return empty lists for anything the notes do not contain.
-- executive_summary: 4 to 6 sentences covering aim, method and main result.
-- key_findings: 4 to 7 items when supported; fewer if not.`;
-
-/** Split extracted text into ~equal sections on paragraph boundaries. */
-function splitIntoSections(text: string): string[] {
-  if (text.length <= SECTION_CHAR_LIMIT) return [text];
-
-  const paragraphs = text.split(/\n{2,}/);
-  const sections: string[] = [];
-  let current = "";
-  for (const paragraph of paragraphs) {
-    if (
-      current.length > 0 &&
-      current.length + paragraph.length + 2 > SECTION_CHAR_LIMIT
-    ) {
-      sections.push(current);
-      current = paragraph;
-    } else {
-      current = current ? `${current}\n\n${paragraph}` : paragraph;
-    }
-  }
-  if (current) sections.push(current);
-
-  // Pathological single paragraph: hard-slice it.
-  return sections.flatMap((section) =>
-    section.length > SECTION_CHAR_LIMIT * 2
-      ? Array.from(
-          { length: Math.ceil(section.length / SECTION_CHAR_LIMIT) },
-          (_, i) =>
-            section.slice(i * SECTION_CHAR_LIMIT, (i + 1) * SECTION_CHAR_LIMIT),
-        )
-      : [section],
-  );
+  // For long papers (> 24,000 chars), take the most critical parts:
+  // First 14,000 chars (Title, Abstract, Background, Method)
+  // Last 10,000 chars (Results, Discussion, Limitations, Conclusion)
+  const head = text.slice(0, 14_000).trim();
+  const tail = text.slice(-10_000).trim();
+  return `${head}\n\n[... intermediate sections omitted for length ...]\n\n${tail}`;
 }
 
 /** Extracts text from an uploaded PDF. Returns "" for image-only files. */
@@ -96,62 +63,51 @@ async function extractPdfText(file: Blob): Promise<string> {
   return text;
 }
 
-/** One digest call for a whole (short) paper. */
-async function digestWholePaper(
+/** Fast, robust single-pass digest that fits within model rate limits and serverless timeouts. */
+async function digestPaper(
   groq: GroqClient,
   fileName: string,
   text: string,
 ): Promise<ResearchDigest> {
+  const prepared = preparePaperText(text);
   return groq.complete({
     what: `digest for "${fileName}"`,
     system: DIGEST_SYSTEM,
-    user: `File: ${fileName}\n\nPaper text:\n${text}`,
+    user: `File: ${fileName}\n\nPaper text:\n${prepared}`,
     jsonSchema: RESEARCH_JSON_SCHEMA,
     zodSchema: ResearchDigestSchema,
   });
 }
 
-/** Map-reduce for long papers: digest each section, then combine. */
-async function digestLongPaper(
-  groq: GroqClient,
-  fileName: string,
-  text: string,
-): Promise<ResearchDigest> {
-  const sections = splitIntoSections(text);
-  const notes: SectionDigest[] = [];
-  for (let i = 0; i < sections.length; i++) {
-    const note = await groq.complete({
-      what: `section ${i + 1}/${sections.length} digest for "${fileName}"`,
-      system: SECTION_SYSTEM,
-      user: `File: ${fileName} — section ${i + 1} of ${sections.length}\n\n${sections[i]}`,
-      jsonSchema: SECTION_JSON_SCHEMA,
-      zodSchema: SectionDigestSchema,
-    });
-    notes.push(note);
-  }
-
-  return groq.complete({
-    what: `combined digest for "${fileName}"`,
-    system: COMBINE_SYSTEM,
-    user: `File: ${fileName}\n\nPer-section notes (JSON):\n${JSON.stringify(notes)}`,
-    jsonSchema: RESEARCH_JSON_SCHEMA,
-    zodSchema: ResearchDigestSchema,
-  });
-}
-
-/** Short, safe message for documents.error_message — never leaks internals. */
-function shortErrorMessage(error: unknown): string {
+/** Meaningful, safe message for documents.error_message and API response. */
+export function shortErrorMessage(error: unknown): string {
   if (error instanceof RateLimitExhaustedError) {
-    return "Groq rate limit hit — wait a minute and retry.";
+    return "Groq rate limit reached — please wait a moment and retry.";
   }
   if (error instanceof InvalidOutputError) {
     return "The summary could not be validated — retry.";
   }
   if (error instanceof Error) {
-    if (error.name === "TimeoutError" || error.name === "AbortError") {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes("rate limit") ||
+      msg.includes("429") ||
+      msg.includes("tpm") ||
+      msg.includes("too large")
+    ) {
+      return "Groq rate limit reached — please wait a moment and retry.";
+    }
+    if (
+      error.name === "TimeoutError" ||
+      error.name === "AbortError" ||
+      msg.includes("timeout") ||
+      msg.includes("timed out")
+    ) {
       return "Summarizing took too long — retry.";
     }
-    return "Summarization failed — retry.";
+    return error.message.length < 150
+      ? error.message
+      : "Summarization failed — retry.";
   }
   return "Summarization failed — retry.";
 }
@@ -230,6 +186,39 @@ export async function POST(request: NextRequest) {
       if (insertError) throw insertError;
       documentId = String(inserted.id);
     }
+
+    // Mark any stale in-flight jobs for this user (> 3m old) as failed so they don't remain stuck indefinitely.
+    try {
+      const staleCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      const { error: cleanupErr } = await supabase
+        .from("documents")
+        .update({
+          status: "failed",
+          error_message:
+            "Previous processing attempt timed out — click retry to run again.",
+        })
+        .eq("user_id", userId)
+        .eq("status", "processing")
+        .neq("storage_path", path)
+        .lt("created_at", staleCutoff);
+
+      // If created_at column does not exist (error 42703), any other document in 'processing' status
+      // for this user when starting a new/retry digest is an orphaned job from a previous run.
+      if (cleanupErr && cleanupErr.code === "42703") {
+        await supabase
+          .from("documents")
+          .update({
+            status: "failed",
+            error_message:
+              "Previous processing attempt timed out — click retry to run again.",
+          })
+          .eq("user_id", userId)
+          .eq("status", "processing")
+          .neq("storage_path", path);
+      }
+    } catch {
+      // Best-effort cleanup
+    }
   } catch {
     return NextResponse.json(
       {
@@ -285,10 +274,7 @@ export async function POST(request: NextRequest) {
   //    120s per-request timeout so nothing hangs).
   try {
     const groq = new GroqClient("GROQ_MODEL_SMART");
-    const digest =
-      text.length <= SECTION_CHAR_LIMIT
-        ? await digestWholePaper(groq, fileName, text)
-        : await digestLongPaper(groq, fileName, text);
+    const digest = await digestPaper(groq, fileName, text);
     await setStatus("ready", digest, null);
 
     // Index the paper for Ask: chunk the extracted text, embed with the

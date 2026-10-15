@@ -62,7 +62,7 @@ const PHASE_LABEL: Record<UploadJob["phase"], string> = {
   failed: "Failed",
 };
 
-function toDocRow(row: {
+export function toDocRow(row: {
   id: unknown;
   file_name: unknown;
   storage_path: unknown;
@@ -74,17 +74,32 @@ function toDocRow(row: {
   const parsed = row.digest_json
     ? ResearchDigestSchema.safeParse(row.digest_json)
     : null;
+  const createdAt = row.created_at ? String(row.created_at) : null;
+  let status: "processing" | "ready" | "failed" =
+    row.status === "ready" || row.status === "failed"
+      ? row.status
+      : "processing";
+  let errorMessage = row.error_message ? String(row.error_message) : null;
+
+  // Stale processing recovery: if createdAt is present and older than 3 minutes,
+  // the serverless execution has definitely terminated.
+  if (status === "processing" && createdAt) {
+    const elapsed = Date.now() - new Date(createdAt).getTime();
+    if (!Number.isNaN(elapsed) && elapsed > 3 * 60 * 1000) {
+      status = "failed";
+      errorMessage =
+        errorMessage ?? "Processing timed out — click retry to run again.";
+    }
+  }
+
   return {
     id: String(row.id),
     fileName: String(row.file_name),
     storagePath: String(row.storage_path),
-    status:
-      row.status === "ready" || row.status === "failed"
-        ? row.status
-        : "processing",
-    errorMessage: row.error_message ? String(row.error_message) : null,
+    status,
+    errorMessage,
     digest: parsed && parsed.success ? parsed.data : null,
-    createdAt: row.created_at ? String(row.created_at) : null,
+    createdAt,
   };
 }
 
@@ -119,12 +134,18 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-function StatusChip({ doc }: { doc: DocRow }) {
-  if (doc.status === "processing") {
+function StatusChip({
+  doc,
+  isRetrying,
+}: {
+  doc: DocRow;
+  isRetrying?: boolean;
+}) {
+  if (doc.status === "processing" || isRetrying) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-        Processing…
+        {isRetrying ? "Retrying…" : "Processing…"}
       </span>
     );
   }
@@ -163,6 +184,8 @@ function DocumentsPanel() {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [retryingId, setRetryingId] = React.useState<string | null>(null);
+  const processingStartRef = React.useRef<Map<string, number>>(new Map());
   const [compare, setCompare] = React.useState<
     | { phase: "idle" }
     | { phase: "running" }
@@ -233,14 +256,38 @@ function DocumentsPanel() {
       }
 
       setLoadError(null);
-      const rows = data.map(toDocRow);
+      const now = Date.now();
+      const rows = data.map(toDocRow).map((row) => {
+        if (row.status === "processing") {
+          let startTime = processingStartRef.current.get(row.id);
+          if (!startTime) {
+            startTime = now;
+            processingStartRef.current.set(row.id, startTime);
+          }
+          // If processing has exceeded 60 seconds (max serverless runtime), mark failed
+          if (now - startTime > 60_000) {
+            return {
+              ...row,
+              status: "failed" as const,
+              errorMessage:
+                row.errorMessage ??
+                "Processing timed out — click retry to run again.",
+            };
+          }
+        } else {
+          processingStartRef.current.delete(row.id);
+        }
+        return row;
+      });
       setDocs(rows);
-      // A job is done once its row reaches a terminal state (the list shows it).
+
+      // Retire any jobs that are now represented in the documents database table,
+      // preventing duplicate cards from appearing on the screen.
       setJobs((prev) =>
         prev.filter((job) => {
           if (!job.storagePath) return true;
           const row = rows.find((item) => item.storagePath === job.storagePath);
-          return !(row && row.status !== "processing");
+          return !row;
         }),
       );
     } catch (err) {
@@ -264,7 +311,9 @@ function DocumentsPanel() {
   }, [refresh]);
 
   // Poll while anything is in flight so the UI follows the server status.
-  const hasActiveJob = jobs.some((job) => job.phase !== "failed");
+  const hasActiveJob =
+    jobs.some((job) => job.phase !== "failed") ||
+    (docs?.some((d) => d.status === "processing") ?? false);
   React.useEffect(() => {
     if (!hasActiveJob) return;
     const interval = window.setInterval(() => {
@@ -418,25 +467,44 @@ function DocumentsPanel() {
   );
 
   function retryJob(job: UploadJob) {
-    if (job.file) {
-      void processFile(job.file, job.key);
-    } else if (job.storagePath) {
+    if (job.storagePath) {
       void runDigest(job.key, job.storagePath, job.fileName);
+    } else if (job.file) {
+      void processFile(job.file, job.key);
     }
   }
 
-  function retryDigest(doc: DocRow) {
-    const key = crypto.randomUUID();
-    ensureJob({
-      key,
-      fileName: doc.fileName,
-      file: null,
-      storagePath: doc.storagePath,
-      phase: "reading",
-      error: null,
-    });
-    void runDigest(key, doc.storagePath, doc.fileName);
-  }
+  const retryDigest = React.useCallback(
+    async (doc: DocRow) => {
+      if (retryingId === doc.id) return;
+      setRetryingId(doc.id);
+      try {
+        const response = await fetch("/api/research/digest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: doc.storagePath,
+            file_name: doc.fileName,
+          }),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          id?: string;
+          status?: string;
+          error?: string;
+        };
+        await refresh();
+        if (response.ok && data.status === "ready" && data.id) {
+          setOpenId(String(data.id));
+        }
+      } catch (err) {
+        console.error("Retry failed:", err);
+        await refresh();
+      } finally {
+        setRetryingId(null);
+      }
+    },
+    [refresh, retryingId],
+  );
 
   async function deleteDoc(doc: DocRow) {
     const confirmed = window.confirm(
@@ -748,7 +816,10 @@ function DocumentsPanel() {
                           {doc.fileName}
                         </p>
                         <div className="mt-1">
-                          <StatusChip doc={doc} />
+                          <StatusChip
+                            doc={doc}
+                            isRetrying={retryingId === doc.id}
+                          />
                         </div>
                       </div>
                     </div>
@@ -772,10 +843,18 @@ function DocumentsPanel() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => retryDigest(doc)}
+                          disabled={retryingId === doc.id}
+                          onClick={() => void retryDigest(doc)}
                         >
-                          <RotateCcw className="size-3.5" aria-hidden="true" />
-                          Retry
+                          {retryingId === doc.id ? (
+                            <Loader2
+                              className="size-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <RotateCcw className="size-3.5" aria-hidden="true" />
+                          )}
+                          {retryingId === doc.id ? "Retrying…" : "Retry"}
                         </Button>
                       )}
                       <Button
@@ -796,9 +875,9 @@ function DocumentsPanel() {
                       </Button>
                     </div>
                   </div>
-                  {doc.status === "failed" && doc.errorMessage && (
+                  {doc.status === "failed" && (
                     <p className="mt-2 text-xs text-destructive">
-                      {doc.errorMessage}
+                      {doc.errorMessage ?? "Summarizing failed — try again."}
                     </p>
                   )}
                 </li>
