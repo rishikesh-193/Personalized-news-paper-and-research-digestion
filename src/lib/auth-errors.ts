@@ -36,3 +36,11 @@ export function friendlyAuthError(error: unknown): string {
   }
   return message || "Something went wrong. Please try again.";
 }
+
+/** Determines if an auth error is caused by rate limiting. */
+export function isRateLimitError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (e?.code === "over_email_send_rate_limit") return true;
+  const message = e?.message ?? "";
+  return /rate limit/i.test(message) || /too many emails/i.test(message);
+}

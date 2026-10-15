@@ -42,32 +42,43 @@ function TileButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      max={6}
-      // The transform and its transition are owned by .tilt-card, so colour,
-      // shadow and border are the only properties transitioned here.
+      max={4}
       className={cn(
-        "relative flex h-24 flex-col justify-between rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        "group relative flex h-24 w-full flex-col justify-between rounded-xl border p-3.5 text-left select-none transition-all duration-200",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
         active
-          ? "border-brand bg-brand/10 shadow-lg shadow-brand/15 ring-1 ring-brand"
-          : "border-border bg-background hover:border-brand/40 hover:shadow-md",
+          ? "border-brand bg-brand/[0.08] ring-1 ring-brand/40 shadow-xs dark:bg-brand/15"
+          : "border-border/80 bg-card hover:border-brand/40 hover:bg-accent/30 hover:shadow-xs",
       )}
     >
-      <Icon
-        className={cn(
-          "size-5 transition-transform duration-300 ease-out",
-          active ? "scale-110 text-brand" : "text-muted-foreground",
-        )}
-        aria-hidden="true"
-      />
-      <span className="font-medium text-foreground">{tile.label}</span>
-      {active ? (
+      <div className="flex w-full items-start justify-between">
+        <Icon
+          className={cn(
+            "size-5 transition-transform duration-200 ease-out",
+            active ? "scale-105 text-brand" : "text-muted-foreground group-hover:text-foreground",
+          )}
+          aria-hidden="true"
+        />
         <span
-          className="animate-in zoom-in-75 fade-in absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-brand text-brand-foreground duration-200 motion-reduce:animate-none"
+          className={cn(
+            "flex size-5 items-center justify-center rounded-full transition-all duration-200",
+            active
+              ? "scale-100 bg-brand text-brand-foreground opacity-100 shadow-xs"
+              : "scale-75 opacity-0 pointer-events-none",
+          )}
           aria-hidden="true"
         >
-          <Check className="size-3" />
+          <Check className="size-3 stroke-[2.5]" />
         </span>
-      ) : null}
+      </div>
+      <span
+        className={cn(
+          "line-clamp-2 text-sm leading-snug tracking-tight transition-colors",
+          active ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+        )}
+      >
+        {tile.label}
+      </span>
     </TiltCard>
   );
 }
@@ -120,6 +131,7 @@ export function OnboardingView({ next }: { next: string | null }) {
       setSelected((prev) => [...prev, topic]);
     }
     setDraft("");
+    setShowCustomInput(false);
   }
 
   function finish(interests: string[]) {
@@ -161,95 +173,169 @@ export function OnboardingView({ next }: { next: string | null }) {
       : `${selected.length} chosen`;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-5 sm:px-6">
-          <Link
-            href="/"
-            className="font-heading text-lg tracking-tight"
-            aria-label="Chronicle home"
-          >
-            Chronicle
-            <span aria-hidden="true" className="text-brand">
-              .
+    <div className="flex min-h-screen flex-col bg-background">
+      {/* Editorial Header */}
+      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/95 backdrop-blur-md">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="font-heading text-xl tracking-tight text-foreground transition-opacity hover:opacity-80"
+              aria-label="Chronicle home"
+            >
+              Chronicle
+              <span aria-hidden="true" className="text-brand">
+                .
+              </span>
+            </Link>
+            <span className="hidden text-xs text-muted-foreground/60 sm:inline-block">/</span>
+            <span className="hidden text-xs font-medium tracking-wide text-muted-foreground uppercase sm:inline-block">
+              {step === 1 ? "Edition Setup" : "Personalization"}
             </span>
-          </Link>
-          <ThemeToggle />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <span
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                  step >= 1
+                    ? "bg-brand text-brand-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                1
+              </span>
+              <span className="hidden sm:inline">Topics</span>
+              <span className="mx-1 h-px w-3 bg-border" />
+              <span
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                  step >= 2
+                    ? "bg-brand text-brand-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                2
+              </span>
+              <span className="hidden sm:inline">Fine-tune</span>
+            </div>
+            <ThemeToggle />
+          </div>
         </div>
-        {/* Two-segment progress indicator */}
-        <div className="mx-auto flex w-full max-w-4xl gap-1.5 px-5 pb-2 sm:px-6">
-          <span
-            className={cn(
-              "h-1 flex-1 rounded-full transition-colors",
-              step >= 1 ? "bg-brand" : "bg-border",
-            )}
-          />
-          <span
-            className={cn(
-              "h-1 flex-1 rounded-full transition-colors",
-              step >= 2 ? "bg-brand" : "bg-border",
-            )}
-          />
+
+        {/* Refined two-segment progress bar */}
+        <div className="mx-auto flex w-full max-w-4xl gap-2 px-4 pb-2 sm:px-6">
+          <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-border/60">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-300 ease-out",
+                step >= 1 ? "w-full bg-brand" : "w-0 bg-transparent",
+              )}
+            />
+          </div>
+          <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-border/60">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-300 ease-out",
+                step >= 2 ? "w-full bg-brand" : "w-0 bg-transparent",
+              )}
+            />
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
+      {/* Main Content Area */}
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pt-8 pb-32 sm:px-6 sm:pt-10 sm:pb-36">
         {step === 1 ? (
           <>
-            <p className="text-xs font-medium tracking-[0.25em] text-muted-foreground uppercase">
-              Step 1 of 2 · Set up your edition
-            </p>
-            <h1 className="mt-3 font-heading text-3xl tracking-tight sm:text-4xl">
-              What do you want to read?
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Pick at least {MIN_TOPICS} topics to build your Today page. Add
-              anything that is missing — you can change all of this later in
-              Settings.
-            </p>
-
-            <div className="relative mt-6">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <label htmlFor="topic-search" className="sr-only">
-                Search topics
-              </label>
-              <Input
-                id="topic-search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search topics…"
-                className="h-10 pl-9"
-                autoComplete="off"
-              />
+            <div className="space-y-2">
+              <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
+                Step 1 of 2 · Set up your edition
+              </p>
+              <h1 className="font-heading text-3xl tracking-tight text-foreground sm:text-4xl">
+                What do you want to read?
+              </h1>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Pick at least {MIN_TOPICS} topics to build your Today edition. You can fine-tune
+                or change any of these later in Settings.
+              </p>
             </div>
 
-            <p
-              className="mt-4 text-xs text-muted-foreground"
-              role="status"
-              aria-live="polite"
-            >
-              {counterText}
-            </p>
+            {/* Search and Selection Toolbar */}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative flex-1 sm:max-w-md">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <label htmlFor="topic-search" className="sr-only">
+                  Search topics
+                </label>
+                <Input
+                  id="topic-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search topics (e.g. AI, Climate, Markets)…"
+                  className="h-10 rounded-lg border-border/80 bg-card/60 pl-9 pr-14 transition-colors focus:bg-card"
+                  autoComplete="off"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
 
-            <div className="mt-6 space-y-8">
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1.5 self-start rounded-full px-3 py-1 text-xs font-medium transition-colors sm:self-auto",
+                  selected.length >= MIN_TOPICS
+                    ? "bg-brand/10 text-brand dark:bg-brand/20"
+                    : "bg-muted text-muted-foreground",
+                )}
+                role="status"
+                aria-live="polite"
+              >
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full transition-colors",
+                    selected.length >= MIN_TOPICS ? "bg-brand" : "bg-muted-foreground/50",
+                  )}
+                />
+                {counterText}
+              </div>
+            </div>
+
+            {/* Topic Groups */}
+            <div className="mt-8 space-y-8">
               {visibleGroups.map((group) => (
                 <section
                   key={group.label}
                   aria-labelledby={`group-${group.label}`}
+                  className="space-y-3"
                 >
-                  <h2
-                    id={`group-${group.label}`}
-                    className="font-heading text-lg tracking-tight"
-                  >
-                    {group.label}
-                  </h2>
+                  <div className="flex items-baseline justify-between border-b border-border/50 pb-2">
+                    <h2
+                      id={`group-${group.label}`}
+                      className="font-heading text-lg font-normal tracking-tight text-foreground sm:text-xl"
+                    >
+                      {group.label}
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {group.tiles.length} {group.tiles.length === 1 ? "topic" : "topics"}
+                    </span>
+                  </div>
                   <Reveal
-                    stagger={0.03}
-                    distance={14}
-                    className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                    stagger={0.02}
+                    distance={12}
+                    childClassName="h-full w-full"
+                    className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
                   >
                     {group.tiles.map((tile) => (
                       <TileButton
@@ -264,17 +350,24 @@ export function OnboardingView({ next }: { next: string | null }) {
               ))}
 
               {visibleCustomTiles.length > 0 ? (
-                <section aria-labelledby="group-yours">
-                  <h2
-                    id="group-yours"
-                    className="font-heading text-lg tracking-tight"
-                  >
-                    Your topics
-                  </h2>
+                <section aria-labelledby="group-yours" className="space-y-3">
+                  <div className="flex items-baseline justify-between border-b border-border/50 pb-2">
+                    <h2
+                      id="group-yours"
+                      className="font-heading text-lg font-normal tracking-tight text-foreground sm:text-xl"
+                    >
+                      Your topics
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {visibleCustomTiles.length}{" "}
+                      {visibleCustomTiles.length === 1 ? "topic" : "topics"}
+                    </span>
+                  </div>
                   <Reveal
-                    stagger={0.03}
-                    distance={14}
-                    className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                    stagger={0.02}
+                    distance={12}
+                    childClassName="h-full w-full"
+                    className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
                   >
                     {visibleCustomTiles.map((tile) => (
                       <TileButton
@@ -288,14 +381,15 @@ export function OnboardingView({ next }: { next: string | null }) {
                 </section>
               ) : null}
 
-              <section aria-labelledby="group-add">
+              {/* Add Custom Topic Section */}
+              <section aria-labelledby="group-add" className="pt-2">
                 <h2 id="group-add" className="sr-only">
                   Add your own topic
                 </h2>
                 {showCustomInput ? (
                   <form
                     onSubmit={addCustomTopic}
-                    className="flex flex-wrap items-center gap-2"
+                    className="flex max-w-md items-center gap-2 rounded-xl border border-border/80 bg-card p-2 shadow-xs"
                   >
                     <label htmlFor="custom-topic" className="sr-only">
                       Add your own topic
@@ -304,40 +398,75 @@ export function OnboardingView({ next }: { next: string | null }) {
                       id="custom-topic"
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
-                      placeholder="Add your own topic…"
-                      className="h-10 w-full sm:w-64"
+                      placeholder="e.g. Architecture, Urbanism…"
+                      className="h-9 border-0 bg-transparent shadow-none focus-visible:ring-0"
                       autoFocus
                     />
                     <Button
                       type="submit"
-                      variant="outline"
-                      className="h-10 gap-1.5"
+                      size="sm"
+                      className="shrink-0 gap-1.5"
                       disabled={!draft.trim()}
                     >
-                      <Plus className="size-4" aria-hidden="true" />
+                      <Plus className="size-3.5" aria-hidden="true" />
                       Add topic
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowCustomInput(false);
+                        setDraft("");
+                      }}
+                    >
+                      Cancel
                     </Button>
                   </form>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomInput(true)}
-                    className="flex h-24 w-full flex-col justify-between rounded-xl border border-dashed border-border bg-background p-4 text-left transition-colors hover:border-brand/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-[18rem]"
-                  >
-                    <Plus className="size-5 text-muted-foreground" aria-hidden="true" />
-                    <span className="font-medium text-foreground">
-                      Add your own topic
-                    </span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomInput(true)}
+                      className="group flex h-24 w-full flex-col justify-between rounded-xl border border-dashed border-border/80 bg-card/40 p-3.5 text-left transition-all duration-200 hover:border-brand/60 hover:bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
+                    >
+                      <div className="flex size-6 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground transition-colors group-hover:border-brand/40 group-hover:text-brand">
+                        <Plus className="size-3.5" aria-hidden="true" />
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
+                        + Add custom topic…
+                      </span>
+                    </button>
+                  </div>
                 )}
               </section>
 
+              {/* Empty Search State */}
               {visibleGroups.length === 0 &&
               visibleCustomTiles.length === 0 &&
               normalizedQuery ? (
-                <p className="text-sm text-muted-foreground">
-                  No topics match “{query}”. Add it as your own topic above.
-                </p>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-card/40 p-8 text-center">
+                  <Search className="mb-2 size-6 text-muted-foreground/60" aria-hidden="true" />
+                  <p className="font-heading text-base text-foreground">
+                    No topics match “{query}”
+                  </p>
+                  <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                    You can add and track “{query}” as a custom topic in your edition.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDraft(query);
+                      setShowCustomInput(true);
+                    }}
+                    className="mt-3 gap-1.5"
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                    Add “{query}” as custom topic
+                  </Button>
+                </div>
               ) : null}
             </div>
 
@@ -352,30 +481,42 @@ export function OnboardingView({ next }: { next: string | null }) {
           </>
         ) : (
           <>
-            <p className="text-xs font-medium tracking-[0.25em] text-muted-foreground uppercase">
-              Step 2 of 2 · Make it yours
-            </p>
-            <h1 className="mt-3 font-heading text-3xl tracking-tight sm:text-4xl">
-              Fine-tune your interests.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Optional — pick sub-topics you care about most, or add your own
-              keywords. Your picks shape which stories lead your edition.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
+                Step 2 of 2 · Make it yours
+              </p>
+              <h1 className="font-heading text-3xl tracking-tight text-foreground sm:text-4xl">
+                Fine-tune your interests.
+              </h1>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Optional — pick sub-topics you care about most, or add specific keywords.
+                Your picks shape which stories lead your daily edition.
+              </p>
+            </div>
 
             <div className="mt-8 space-y-5">
               {selected.map((topic) => (
                 <section
                   key={topic}
                   aria-labelledby={`subtopics-${topic}`}
-                  className="rounded-xl border border-border bg-card p-5"
+                  className="rounded-xl border border-border/80 bg-card p-5 shadow-xs transition-shadow hover:shadow-sm"
                 >
-                  <h2
-                    id={`subtopics-${topic}`}
-                    className="font-heading text-lg tracking-tight"
-                  >
-                    {topic}
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2
+                      id={`subtopics-${topic}`}
+                      className="font-heading text-lg font-medium tracking-tight"
+                    >
+                      {topic}
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {
+                        subTopics.filter((st) =>
+                          subtopicSuggestionsFor(topic).includes(st),
+                        ).length
+                      }{" "}
+                      selected
+                    </span>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {subtopicSuggestionsFor(topic).map((subTopic) => {
                       const active = subTopics.includes(subTopic);
@@ -386,12 +527,15 @@ export function OnboardingView({ next }: { next: string | null }) {
                           aria-pressed={active}
                           onClick={() => toggleSubTopic(subTopic)}
                           className={cn(
-                            "rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
                             active
-                              ? "border-brand bg-brand text-brand-foreground"
-                              : "border-border bg-background text-muted-foreground hover:text-foreground",
+                              ? "border-brand bg-brand text-brand-foreground shadow-xs"
+                              : "border-border/80 bg-background text-muted-foreground hover:border-brand/40 hover:text-foreground",
                           )}
                         >
+                          {active ? (
+                            <Check className="size-3 stroke-[2.5]" aria-hidden="true" />
+                          ) : null}
                           {subTopic}
                         </button>
                       );
@@ -402,16 +546,16 @@ export function OnboardingView({ next }: { next: string | null }) {
 
               <section
                 aria-labelledby="keywords-heading"
-                className="rounded-xl border border-border bg-card p-5"
+                className="rounded-xl border border-border/80 bg-card p-5 shadow-xs"
               >
                 <h2
                   id="keywords-heading"
-                  className="font-heading text-lg tracking-tight"
+                  className="font-heading text-lg font-medium tracking-tight"
                 >
                   Keywords
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Optional — anything the topic tiles miss.
+                  Optional — comma-separated topics or entities the tiles missed.
                 </p>
                 <label htmlFor="keywords" className="sr-only">
                   Keywords
@@ -420,8 +564,8 @@ export function OnboardingView({ next }: { next: string | null }) {
                   id="keywords"
                   value={keywords}
                   onChange={(event) => setKeywords(event.target.value)}
-                  placeholder="e.g. electric vehicles, urban design"
-                  className="mt-3 h-10"
+                  placeholder="e.g. electric vehicles, urban design, semiconductor fabrication"
+                  className="mt-3 h-10 border-border/80 bg-background"
                 />
               </section>
             </div>
@@ -438,25 +582,41 @@ export function OnboardingView({ next }: { next: string | null }) {
         )}
       </main>
 
-      {/* Sticky bottom action bar */}
-      <div className="sticky bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <p
-            className="text-sm text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            {step === 1
-              ? counterText
-              : `${selected.length} topics · ${subTopics.length} sub-topics`}
-          </p>
-          <div className="flex items-center gap-3">
+      {/* Sticky Bottom Action Bar */}
+      <footer className="sticky bottom-0 z-40 border-t border-border/80 bg-background/95 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
+          <div className="flex items-center gap-2">
+            <p
+              className="text-xs font-medium text-muted-foreground sm:text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              {step === 1 ? (
+                <>
+                  <span className="font-semibold text-foreground">{selected.length}</span> of{" "}
+                  <span>{MIN_TOPICS} minimum chosen</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-foreground">{selected.length}</span> topics ·{" "}
+                  <span className="font-semibold text-foreground">{subTopics.length}</span> sub-topics
+                </>
+              )}
+            </p>
+            {step === 1 && selected.length < MIN_TOPICS ? (
+              <span className="hidden text-xs text-muted-foreground/80 md:inline">
+                ({MIN_TOPICS - selected.length} more needed to continue)
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {step === 2 ? (
               <Button
                 variant="ghost"
                 onClick={() => setStep(1)}
                 disabled={pending}
-                className="gap-1.5"
+                className="gap-1.5 text-xs sm:text-sm"
               >
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 Back
@@ -466,16 +626,23 @@ export function OnboardingView({ next }: { next: string | null }) {
                 variant="ghost"
                 onClick={() => finish(selected)}
                 disabled={pending}
-                className="gap-1.5"
+                className="gap-1.5 text-xs text-muted-foreground hover:text-foreground sm:text-sm"
               >
                 <SkipForward className="size-4" aria-hidden="true" />
                 Skip for now
               </Button>
             )}
+
             {step === 1 ? (
               <Button
                 onClick={() => setStep(2)}
                 disabled={selected.length < MIN_TOPICS}
+                className={cn(
+                  "gap-1.5 transition-all",
+                  selected.length >= MIN_TOPICS
+                    ? "bg-brand text-brand-foreground shadow-sm hover:bg-brand/90"
+                    : "",
+                )}
               >
                 Continue
               </Button>
@@ -492,17 +659,17 @@ export function OnboardingView({ next }: { next: string | null }) {
                   ])
                 }
                 disabled={pending}
-                className="gap-2"
+                className="gap-2 bg-brand text-brand-foreground shadow-sm hover:bg-brand/90"
               >
                 {pending ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 ) : null}
-                {pending ? "Saving…" : "Finish"}
+                {pending ? "Saving edition…" : "Complete Setup"}
               </Button>
             )}
           </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

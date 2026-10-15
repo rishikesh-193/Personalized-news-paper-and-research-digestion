@@ -152,6 +152,17 @@
   ::selection {
     background: color-mix(in oklch, var(--brand) 25%, transparent);
   }
+
+  /* Browser autofill styling: preserves theme contrast and prevents default yellow/blue backgrounds */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--card) inset !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--foreground);
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
 
 /* ==========================================================================

@@ -41,6 +41,8 @@ type RevealProps = Omit<
   /** Stagger direct children instead of animating the wrapper as a whole. */
   stagger?: number;
   as?: RevealTag;
+  /** Optional class applied to each staggered child motion wrapper. */
+  childClassName?: string;
 };
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -62,6 +64,7 @@ export function Reveal({
   distance = 18,
   stagger,
   as = "div",
+  childClassName,
   ...rest
 }: RevealProps) {
   const { reduceEffects } = useEffectsPreference();
@@ -91,6 +94,7 @@ export function Reveal({
           // turn the stagger into nothing.
           <motion.div
             key={index}
+            className={childClassName}
             variants={{
               hidden: { opacity: 0, y: distance },
               visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },

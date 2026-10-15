@@ -34,9 +34,11 @@ export function LoginForm({
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const router = useRouter();
+  const isSubmittingRef = React.useRef(false);
 
   function continueWithGoogle() {
-    if (pending) return;
+    if (isSubmittingRef.current || pending) return;
+    isSubmittingRef.current = true;
     setError(null);
     startTransition(async () => {
       try {
@@ -53,26 +55,33 @@ export function LoginForm({
         if (oauthError) setError(friendlyAuthError(oauthError));
       } catch {
         setError("Could not reach the sign-in service. Try again in a moment.");
+      } finally {
+        isSubmittingRef.current = false;
       }
     });
   }
 
   function signInWithPassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
+    if (isSubmittingRef.current || pending) return;
+    isSubmittingRef.current = true;
     setError(null);
     startTransition(async () => {
-      const { error: signInError } = await createClient().auth.signInWithPassword(
-        { email, password },
-      );
-      if (signInError) {
-        setError(friendlyAuthError(signInError));
-        return;
+      try {
+        const { error: signInError } = await createClient().auth.signInWithPassword(
+          { email, password },
+        );
+        if (signInError) {
+          setError(friendlyAuthError(signInError));
+          return;
+        }
+        // Route by profiles.onboarded on the server (getClaims-verified).
+        router.push(
+          `/auth/post-login?next=${encodeURIComponent(next ?? "/today")}`,
+        );
+      } finally {
+        isSubmittingRef.current = false;
       }
-      // Route by profiles.onboarded on the server (getClaims-verified).
-      router.push(
-        `/auth/post-login?next=${encodeURIComponent(next ?? "/today")}`,
-      );
     });
   }
 

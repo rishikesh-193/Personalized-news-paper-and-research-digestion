@@ -14,20 +14,20 @@ export default async function SignupPage({
 
   return (
     <AuthLayout>
-      <p className="text-xs font-medium tracking-[0.25em] text-muted-foreground uppercase">
+      <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
         Start your edition
       </p>
-      <h1 className="mt-4 font-heading text-3xl tracking-tight sm:text-4xl">
+      <h1 className="mt-2 font-heading text-2xl tracking-tight text-foreground sm:text-3xl">
         Create your account.
       </h1>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
         A personalized newspaper and a research library, ready before your
         first coffee.
       </p>
-      <div className="mt-8">
+      <div className="mt-5">
         <SignupForm oauthFailed={params.error === "oauth"} />
       </div>
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-5 text-center text-xs text-muted-foreground sm:text-sm">
         Already have an account?{" "}
         <Link
           href="/login"

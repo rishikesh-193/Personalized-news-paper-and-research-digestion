@@ -11,9 +11,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
  */
 export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen md:grid-cols-2">
-      <div className="flex flex-col bg-background">
-        <header className="flex h-14 items-center justify-between px-5 sm:px-8">
+    <div className="grid min-h-screen md:grid-cols-2 lg:grid-cols-[1.05fr_0.95fr] xl:grid-cols-2">
+      <div className="flex min-h-screen flex-col overflow-y-auto bg-background">
+        <header className="flex h-14 shrink-0 items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
             className="font-heading text-lg tracking-tight"
@@ -27,8 +27,8 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
         </header>
 
-        <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
-          <div className="paper-edge w-full max-w-[400px] rounded-2xl border border-border bg-card p-6 sm:p-8">
+        <main className="flex flex-1 flex-col justify-center px-4 py-5 sm:px-8 sm:py-8">
+          <div className="paper-edge mx-auto my-auto w-full max-w-[420px] rounded-2xl border border-border/80 bg-card p-5 shadow-xs sm:p-7">
             <AuthEntrance>{children}</AuthEntrance>
           </div>
         </main>

@@ -14,11 +14,11 @@ export function AuthField({
   label: string;
 } & Omit<React.ComponentProps<"input">, "id">) {
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+    <div className="space-y-1 sm:space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-foreground sm:text-sm">
         {label}
       </label>
-      <Input id={id} className="h-10" {...props} />
+      <Input id={id} className="h-9 sm:h-10" {...props} />
     </div>
   );
 }
@@ -39,9 +39,9 @@ export function PasswordField({
   const [visible, setVisible] = React.useState(false);
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1 sm:space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-sm font-medium text-foreground">
+        <label htmlFor={id} className="text-xs font-medium text-foreground sm:text-sm">
           {label}
         </label>
         {hint}
@@ -51,7 +51,7 @@ export function PasswordField({
           id={id}
           type={visible ? "text" : "password"}
           autoComplete={autoComplete}
-          className="h-10 pr-11"
+          className="h-9 pr-11 sm:h-10"
           {...props}
         />
         <button
@@ -72,17 +72,17 @@ export function PasswordField({
   );
 }
 
-/** Inline, screen-reader-friendly error message. */
+/** Inline, screen-reader-friendly error message with clean text wrapping. */
 export function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p
+    <div
       role="alert"
       aria-live="polite"
-      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive duration-300 motion-reduce:animate-none"
+      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive break-words duration-300 sm:text-sm motion-reduce:animate-none"
     >
       {message}
-    </p>
+    </div>
   );
 }
 
@@ -90,25 +90,25 @@ export function FormError({ message }: { message: string | null }) {
 export function FormNotice({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p
+    <div
       role="status"
       aria-live="polite"
-      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-sm text-brand duration-300 motion-reduce:animate-none"
+      className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-xs leading-relaxed text-brand break-words duration-300 sm:text-sm motion-reduce:animate-none"
     >
       {message}
-    </p>
+    </div>
   );
 }
 
 /** "or" divider between the password form and the Google button. */
 export function OrDivider() {
   return (
-    <div className="relative my-6">
+    <div className="relative my-4 sm:my-5">
       <div className="absolute inset-0 flex items-center">
-        <span className="w-full border-t border-border" />
+        <span className="w-full border-t border-border/80" />
       </div>
       <div className="relative flex justify-center">
-        <span className="bg-background px-2 text-xs tracking-widest text-muted-foreground uppercase">
+        <span className="bg-card px-2.5 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
           or
         </span>
       </div>
